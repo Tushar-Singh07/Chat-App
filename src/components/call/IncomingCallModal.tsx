@@ -1,63 +1,72 @@
 import React from 'react';
 import { Phone, PhoneOff, Video, Mic } from 'lucide-react';
-import { useCall } from '../../context/CallContext';
+import type { User } from '../../types';
+import { Avatar } from '../Avatar';
 
-export const IncomingCallModal: React.FC = () => {
-  const { activeCall, acceptCall, rejectCall } = useCall();
-  const peerUser = activeCall?.peerUser;
+interface IncomingCallModalProps {
+  caller: User;
+  callType: 'voice' | 'video';
+  onAccept: () => void;
+  onReject: () => void;
+}
 
-  if (!activeCall || activeCall.state !== 'incoming' || !peerUser) return null;
-  const callType = activeCall.callType;
-
+export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
+  caller,
+  callType,
+  onAccept,
+  onReject,
+}) => {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-fade-in p-4">
-      <div className="w-full max-w-sm bg-white dark:bg-dark-panel rounded-3xl p-6 shadow-2xl border border-gray-200 dark:border-gray-800 text-center relative overflow-hidden">
-        {/* Animated pulsing background effect */}
-        <div className="absolute inset-0 bg-gradient-to-b from-brand-500/10 to-transparent pointer-events-none" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 max-w-sm w-full shadow-2xl text-center flex flex-col items-center relative overflow-hidden select-none">
+        {/* Glow backdrop effect */}
+        <div className="absolute -top-24 -left-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl" />
 
-        {/* Call Type Icon Badge */}
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-100 dark:bg-brand-950 text-brand-600 dark:text-brand-300 text-xs font-semibold mb-6">
-          {callType === 'video' ? <Video className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-          <span>Incoming {callType === 'video' ? 'Video' : 'Voice'} Call</span>
+        {/* Pulsing Avatar */}
+        <div className="relative flex items-center justify-center mb-6">
+          <div className="absolute w-36 h-36 rounded-full bg-emerald-500/20 animate-ping" />
+          <div className="absolute w-28 h-28 rounded-full bg-emerald-500/30 animate-pulse" />
+          <Avatar
+            src={caller.avatar}
+            alt={caller.name}
+            size="xl"
+            className="w-24 h-24 border-4 border-zinc-800 shadow-2xl relative z-10"
+          />
         </div>
 
-        {/* Caller Avatar */}
-        <div className="relative w-24 h-24 mx-auto mb-4">
-          <div className="absolute inset-0 rounded-full bg-brand-500/30 animate-ping" />
-          <div className="relative w-full h-full rounded-full overflow-hidden border-4 border-white dark:border-gray-800 shadow-md bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-            {peerUser.profilePhoto ? (
-              <img src={peerUser.profilePhoto} alt={peerUser.name} className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-2xl font-bold text-gray-600 dark:text-gray-300">
-                {peerUser.name.charAt(0).toUpperCase()}
-              </span>
-            )}
-          </div>
+        {/* Caller Details */}
+        <h3 className="text-2xl font-bold text-white tracking-tight mb-1">{caller.name}</h3>
+        <div className="flex items-center gap-1.5 text-emerald-400 text-sm font-semibold mb-6">
+          {callType === 'video' ? <Video className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+          <span>Incoming {callType === 'video' ? 'Video' : 'Voice'} Call...</span>
         </div>
-
-        {/* Caller Name & Info */}
-        <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">{peerUser.name}</h3>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-8">@{peerUser.username}</p>
 
         {/* Action Buttons */}
-        <div className="flex items-center justify-center gap-6">
-          {/* Reject */}
-          <button
-            onClick={rejectCall}
-            className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-lg transition-transform hover:scale-110 active:scale-95"
-            title="Decline Call"
-          >
-            <PhoneOff className="w-6 h-6" />
-          </button>
+        <div className="flex items-center justify-center gap-8 w-full pt-4 border-t border-zinc-800/80">
+          {/* Decline Button */}
+          <div className="flex flex-col items-center gap-2">
+            <button
+              onClick={onReject}
+              className="p-4 rounded-full bg-rose-600 hover:bg-rose-700 text-white shadow-xl transition-all duration-200 active:scale-90 ring-4 ring-rose-600/30"
+              title="Decline Call"
+            >
+              <PhoneOff className="w-6 h-6" />
+            </button>
+            <span className="text-xs text-zinc-400 font-medium">Decline</span>
+          </div>
 
-          {/* Accept */}
-          <button
-            onClick={acceptCall}
-            className="w-14 h-14 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center shadow-lg transition-transform hover:scale-110 active:scale-95 animate-bounce"
-            title="Accept Call"
-          >
-            <Phone className="w-6 h-6" />
-          </button>
+          {/* Accept Button */}
+          <div className="flex flex-col items-center gap-2">
+            <button
+              onClick={onAccept}
+              className="p-4 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl transition-all duration-200 active:scale-90 ring-4 ring-emerald-600/30 animate-bounce"
+              title="Accept Call"
+            >
+              <Phone className="w-6 h-6" />
+            </button>
+            <span className="text-xs text-zinc-400 font-medium">Accept</span>
+          </div>
         </div>
       </div>
     </div>

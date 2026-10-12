@@ -1,96 +1,46 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider } from './context/ThemeContext';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import { ChatProvider } from './context/ChatContext';
-import { CallProvider } from './context/CallContext';
-
-import { LandingPage } from './pages/LandingPage';
-import { LoginPage } from './pages/LoginPage';
-import { SignupPage } from './pages/SignupPage';
-import { VerifyEmailPage } from './pages/VerifyEmailPage';
-import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
-import { ResetPasswordPage } from './pages/ResetPasswordPage';
-import { DashboardPage } from './pages/DashboardPage';
-import { SettingsPage } from './pages/SettingsPage';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import { AppProvider } from './context/AppContext';
+import { ToastProvider } from './context/ToastContext';
+import { MainLayout } from './layouts/MainLayout';
+import { ChatsPage } from './pages/ChatsPage';
+import { StatusPage } from './pages/StatusPage';
+import { CallsPage } from './pages/CallsPage';
 import { ProfilePage } from './pages/ProfilePage';
-import { NotificationsPage } from './pages/NotificationsPage';
-import { Spinner } from './components/common/Spinner';
+import { SettingsPage } from './pages/SettingsPage';
+import { LoginPage } from './pages/LoginPage';
+import { RegisterPage } from './pages/RegisterPage';
+import { ProtectedRoute, PublicOnlyRoute } from './components/auth/ProtectedRoute';
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-dark-bg text-gray-500">
-        <Spinner size="lg" className="mb-3" />
-        <p className="text-xs font-semibold">Verifying SecureConnect Session...</p>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  return <>{children}</>;
-};
-
-const PublicOnlyRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-dark-bg text-gray-500">
-        <Spinner size="lg" className="mb-3" />
-      </div>
-    );
-  }
-
-  if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
-  return <>{children}</>;
-};
-
-export const AppContent: React.FC = () => {
+export default function App() {
   return (
-    <Routes>
-      {/* Public Pages */}
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/login" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
-      <Route path="/signup" element={<PublicOnlyRoute><SignupPage /></PublicOnlyRoute>} />
-      <Route path="/verify-email" element={<VerifyEmailPage />} />
-      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
-
-      {/* Authenticated Protected Pages */}
-      <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-      <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-      <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-      <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
-
-      {/* Fallback */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  );
-};
-
-export const App: React.FC = () => {
-  return (
-    <ThemeProvider>
+    <ToastProvider>
       <AuthProvider>
-        <ChatProvider>
-          <CallProvider>
-            <BrowserRouter>
-              <AppContent />
-            </BrowserRouter>
-          </CallProvider>
-        </ChatProvider>
-      </AuthProvider>
-    </ThemeProvider>
-  );
-};
+        <AppProvider>
+          <BrowserRouter>
+            <Routes>
+              {/* Public Auth Routes */}
+              <Route element={<PublicOnlyRoute />}>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
+              </Route>
 
-export default App;
+              {/* Protected Main App Routes */}
+              <Route element={<ProtectedRoute />}>
+                <Route path="/" element={<MainLayout />}>
+                  <Route index element={<ChatsPage />} />
+                  <Route path="chat/:conversationId" element={<ChatsPage />} />
+                  <Route path="status" element={<StatusPage />} />
+                  <Route path="calls" element={<CallsPage />} />
+                  <Route path="profile" element={<ProfilePage />} />
+                  <Route path="settings" element={<SettingsPage />} />
+                </Route>
+              </Route>
+            </Routes>
+          </BrowserRouter>
+        </AppProvider>
+      </AuthProvider>
+    </ToastProvider>
+  );
+}

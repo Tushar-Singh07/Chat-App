@@ -1,11 +1,11 @@
-import { apiClient } from './api';
-import { User } from '../types';
+import { apiFetch, setToken } from './api';
+import type { User } from '../types';
 
 export interface RegisterPayload {
   name: string;
-  username: string;
   email: string;
   password: string;
+  phone?: string;
 }
 
 export interface LoginPayload {
@@ -13,46 +13,68 @@ export interface LoginPayload {
   password: string;
 }
 
+export interface AuthResponseData {
+  user: User;
+  token?: string;
+}
+
 export const authService = {
-  async getCurrentUser(): Promise<User | null> {
-    try {
-      const res: any = await apiClient.get('/auth/me');
-      return res.data?.user || null;
-    } catch (err) {
-      return null;
+  async register(payload: RegisterPayload) {
+    const res = await apiFetch<AuthResponseData>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+
+    if (res.success && res.data?.token) {
+      setToken(res.data.token);
     }
+    return res;
   },
 
-  async login(payload: LoginPayload): Promise<User> {
-    const res: any = await apiClient.post('/auth/login', payload);
-    return res.data.user;
-  },
+  async login(payload: LoginPayload) {
+    const res = await apiFetch<AuthResponseData>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
 
-  async signup(payload: RegisterPayload): Promise<{ message: string; email: string }> {
-    const res: any = await apiClient.post('/auth/register', payload);
-    return res.data;
-  },
-
-  async logout(): Promise<void> {
-    try {
-      await apiClient.post('/auth/logout');
-    } catch (e) {
-      // Ignore if session already cleared
+    if (res.success && res.data?.token) {
+      setToken(res.data.token);
     }
+    return res;
   },
 
-  async verifyEmail(token: string): Promise<User> {
-    const res: any = await apiClient.post('/auth/verify-email', { token });
-    return res.data.user;
+  async sendVerificationCode(email: string) {
+    const res = await apiFetch<{ message: string; code?: string }>('/auth/send-code', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+    return res;
   },
 
-  async requestPasswordReset(email: string): Promise<string> {
-    const res: any = await apiClient.post('/auth/forgot-password', { email });
-    return res.message;
+  async verifyCodeLogin(email: string, code: string) {
+    const res = await apiFetch<AuthResponseData>('/auth/verify-code', {
+      method: 'POST',
+      body: JSON.stringify({ email, code }),
+    });
+
+    if (res.success && res.data?.token) {
+      setToken(res.data.token);
+    }
+    return res;
   },
 
-  async resetPassword(token: string, newPassword: string): Promise<string> {
-    const res: any = await apiClient.post('/auth/reset-password', { token, password: newPassword });
-    return res.message;
-  }
+  async logout() {
+    const res = await apiFetch('/auth/logout', {
+      method: 'POST',
+    });
+    setToken(null);
+    return res;
+  },
+
+  async getCurrentUser() {
+    const res = await apiFetch<AuthResponseData>('/auth/me', {
+      method: 'GET',
+    });
+    return res;
+  },
 };

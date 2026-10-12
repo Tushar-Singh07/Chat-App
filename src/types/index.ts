@@ -1,153 +1,111 @@
-export type UserStatus = 'online' | 'offline' | 'away';
+export type PresenceStatus = 'online' | 'offline' | 'typing';
 
-export interface PrivacySettings {
-  showOnlineStatus: boolean;
-  showLastSeen: boolean;
-  allowMessagesFrom?: 'everyone' | 'contacts';
-  allowCallsFrom?: 'everyone' | 'contacts';
-  lastSeenVisibility?: 'everyone' | 'contacts' | 'nobody';
-  readReceipts?: boolean;
-  profilePhotoVisibility?: 'everyone' | 'contacts' | 'nobody';
+export interface UserPresence {
+  status: PresenceStatus;
+  lastSeen?: string;
 }
+
+export type Presence = 'online' | 'offline' | 'away' | 'busy' | 'typing';
 
 export interface User {
   id: string;
   name: string;
-  username: string;
-  email?: string;
-  profilePhoto?: string | null;
-  avatarUrl?: string;
-  bio?: string;
-  status?: UserStatus;
-  isOnline?: boolean;
-  lastSeen?: string | null;
-  isEmailVerified?: boolean;
-  privacySettings?: PrivacySettings;
+  email: string;
+  avatar: string;
+  bio: string;
+  phone: string;
+  presence: Presence;
+  lastSeen?: string;
+  customStatus?: string;
 }
-
-export type MessageType = 'text' | 'image' | 'video' | 'audio' | 'document' | 'file' | 'system' | 'call';
-export type MessageStatus = 'sent' | 'delivered' | 'read';
 
 export interface Reaction {
-  userId: string;
+  id: string;
   emoji: string;
+  userId: string;
+  userName: string;
+  timestamp: string;
 }
 
-export interface Attachment {
+export interface MediaAttachment {
   id: string;
-  attachmentId?: string;
-  originalName: string;
-  storedFileName?: string;
-  mimeType: string;
-  fileSize: number;
-  size?: number;
-  checksum?: string | null;
-  fileUrl?: string;
-  url?: string;
-  thumbnailUrl?: string | null;
-  durationSeconds?: number;
-  createdAt?: string;
+  type: 'image' | 'video' | 'audio' | 'document' | 'location';
+  url: string;
+  fileName?: string;
+  fileSize?: string;
+  duration?: string;
+  thumbnailUrl?: string;
+  latitude?: number;
+  longitude?: number;
+  locationName?: string;
 }
+
+export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'seen' | 'read';
 
 export interface Message {
   id: string;
   conversationId: string;
   senderId: string;
-  messageType: MessageType;
-  content?: string;
-  attachments?: Attachment[];
-  replyToMessageId?: string;
-  replyToMessage?: {
-    senderName: string;
-    content: string;
-  };
-  reactions?: Reaction[];
+  content: string;
+  timestamp: string;
+  date?: string;
   status: MessageStatus;
-  isEdited?: boolean;
-  editedAt?: string;
-  isDeleted?: boolean;
-  createdAt: string;
-}
-
-export type ConversationType = 'direct' | 'group';
-
-export interface Participant {
-  id?: string;
-  userId: string;
-  user?: User;
-  role?: 'admin' | 'member';
-  unreadCount: number;
+  reactions?: Reaction[];
+  replyToMessageId?: string;
+  attachments?: MediaAttachment[];
+  isStarred?: boolean;
+  isSystem?: boolean;
+  callSummary?: {
+    type: 'voice' | 'video';
+    duration: string;
+  };
 }
 
 export interface Conversation {
   id: string;
-  type: ConversationType;
-  participants: Participant[];
-  name?: string; // For groups
-  avatarUrl?: string; // For groups
-  description?: string; // For groups
-  ownerId?: string; // For groups
-  admins?: string[]; // For groups
+  participantIds: string[];
+  unreadCount: number;
   lastMessage?: Message;
-  updatedAt: string;
+  isPinned?: boolean;
   isMuted?: boolean;
+  isArchived?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StatusViewer {
+  userId: string;
+  viewedAt: string;
+}
+
+export type StatusMediaType = 'image' | 'video' | 'text';
+export type StatusFontStyle = 'sans' | 'serif' | 'mono' | 'handwriting' | 'display';
+
+export interface Status {
+  id: string;
+  userId: string;
+  mediaUrl?: string;
+  mediaType: StatusMediaType;
+  caption?: string;
+  text?: string;
+  bgColor?: string;
+  fontStyle?: StatusFontStyle;
+  createdAt: string;
+  expiresAt: string;
+  viewers: StatusViewer[];
 }
 
 export type CallType = 'voice' | 'video';
-export type CallState = 'idle' | 'outgoing' | 'incoming' | 'active' | 'ended';
+export type CallStatus = 'missed' | 'incoming' | 'outgoing' | 'ended' | 'rejected';
 
-export interface CallSession {
+export interface Call {
   id: string;
-  peerUser: User;
-  callType: CallType;
-  state: CallState;
-  startTime?: string;
-  durationSeconds: number;
-  isMuted: boolean;
-  isVideoOff: boolean;
-  isScreenSharing: boolean;
-}
-
-export interface NotificationItem {
-  id: string;
-  type: 'message' | 'call' | 'group' | 'security';
-  title: string;
-  body: string;
-  timestamp: string;
-  isRead: boolean;
-  actionUrl?: string;
-  sender?: {
-    name: string;
-    avatarUrl?: string;
-  };
-}
-
-export interface SessionDevice {
-  id: string;
-  deviceName: string;
-  browser: string;
-  os: string;
-  ipAddress: string;
-  lastActive: string;
-  isCurrent: boolean;
-}
-
-export type ChatRequestStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
-
-export interface ChatRequest {
-  id: string;
-  senderId: string;
+  callerId: string;
   receiverId: string;
-  sender?: User;
-  receiver?: User;
-  message?: string;
-  status: ChatRequestStatus;
-  createdAt: string;
+  type: CallType;
+  status: CallStatus;
+  timestamp: string;
+  duration?: string;
 }
 
-export interface ChatStatusResult {
-  status: 'none' | 'pending_sent' | 'pending_received' | 'accepted' | 'declined';
-  conversationId?: string | null;
-  requestId?: string | null;
-}
-
+export type ActiveTab = 'chats' | 'status' | 'calls' | 'profile' | 'settings';

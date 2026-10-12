@@ -1,275 +1,160 @@
-export interface WebRTCConfig {
-  stunUrl?: string;
-  turnUrl?: string;
-  turnUsername?: string;
-  turnCredential?: string;
-}
+export const getIceServers = (): RTCConfiguration => {
+  const iceServers: RTCIceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+  ];
+
+  const turnUrl = import.meta.env.VITE_TURN_SERVER_URL;
+  if (turnUrl) {
+    iceServers.push({
+      urls: turnUrl,
+      username: import.meta.env.VITE_TURN_USERNAME || '',
+      credential: import.meta.env.VITE_TURN_CREDENTIAL || '',
+    });
+  }
+
+  return { iceServers };
+};
 
 export class WebRTCService {
-  private pc: RTCPeerConnection | null = null;
+  private peerConnection: RTCPeerConnection | null = null;
   private localStream: MediaStream | null = null;
-  private remoteStream: MediaStream | null = null;
-  private screenStream: MediaStream | null = null;
-  private cameraVideoTrack: MediaStreamTrack | null = null;
-  private iceCandidateQueue: RTCIceCandidateInit[] = [];
+  private pendingIceCandidates: RTCIceCandidateInit[] = [];
   private onRemoteStreamCallback: ((stream: MediaStream) => void) | null = null;
   private onIceCandidateCallback: ((candidate: RTCIceCandidate) => void) | null = null;
-  private onConnectionStateCallback: ((state: RTCPeerConnectionState) => void) | null = null;
 
-  private getRTCConfiguration(): RTCConfiguration {
-    const metaEnv = (import.meta as any).env || {};
-    const stunUrl = metaEnv.VITE_WEBRTC_STUN_URL || 'stun:stun.l.google.com:19302';
-    const turnUrl = metaEnv.VITE_WEBRTC_TURN_URL;
-    const turnUsername = metaEnv.VITE_WEBRTC_TURN_USERNAME;
-    const turnCredential = metaEnv.VITE_WEBRTC_TURN_CREDENTIAL;
-
-    const iceServers: RTCIceServer[] = [{ urls: stunUrl }];
-
-    if (turnUrl) {
-      iceServers.push({
-        urls: turnUrl,
-        username: turnUsername,
-        credential: turnCredential,
-      });
-    }
-
-    return { iceServers };
-  }
-
-  private createFallbackStream(video: boolean = false): MediaStream {
-    const stream = new MediaStream();
-
+  async getMediaStream(isVideo: boolean): Promise<MediaStream> {
     try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioCtx) {
-        const ctx = new AudioCtx();
-        const dest = ctx.createMediaStreamDestination();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        gain.gain.value = 0.0001; // Soft silent audio track
-        osc.connect(gain);
-        gain.connect(dest);
-        osc.start();
-        dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
-      }
-    } catch (_) {}
-
-    if (video) {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = 640;
-        canvas.height = 480;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.fillStyle = '#0f172a';
-          ctx.fillRect(0, 0, 640, 480);
-          ctx.fillStyle = '#6366f1';
-          ctx.font = 'bold 20px sans-serif';
-          ctx.fillText('Live Stream Active', 230, 240);
-        }
-        const canvasStream = canvas.captureStream(10);
-        canvasStream.getVideoTracks().forEach((t) => stream.addTrack(t));
-      } catch (_) {}
-    }
-
-    this.localStream = stream;
-    return stream;
-  }
-
-  async getUserMedia(video: boolean = false): Promise<MediaStream> {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      console.warn('[WebRTC] getUserMedia not supported, using fallback stream');
-      return this.createFallbackStream(video);
-    }
-
-    try {
-      this.localStream = await navigator.mediaDevices.getUserMedia({
+      const constraints: MediaStreamConstraints = {
         audio: true,
-        video: video ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } : false,
-      });
+        video: isVideo ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } : false,
+      };
 
-      if (video) {
-        this.cameraVideoTrack = this.localStream.getVideoTracks()[0] || null;
-      }
-
-      return this.localStream;
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      this.localStream = stream;
+      return stream;
     } catch (err: any) {
-      console.warn('[WebRTC getUserMedia Error, trying fallback]:', err?.message || err);
-
-      // Attempt audio-only if video failed
-      if (video) {
-        try {
-          this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-          return this.localStream;
-        } catch (_) {}
+      console.error('[WebRTC] Error acquiring media stream:', err);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        throw new Error('Microphone/Camera permission was denied. Please allow device permissions.');
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        throw new Error('Microphone or Camera device not found on your system.');
       }
-
-      // Final fallback synthetic stream so calls never crash
-      return this.createFallbackStream(video);
+      throw new Error(err.message || 'Failed to access microphone or camera.');
     }
   }
 
   createPeerConnection(
-    onIceCandidate: (candidate: RTCIceCandidate) => void,
     onRemoteStream: (stream: MediaStream) => void,
-    onConnectionState?: (state: RTCPeerConnectionState) => void
+    onIceCandidate: (candidate: RTCIceCandidate) => void
   ): RTCPeerConnection {
-    this.cleanupPeerConnection();
-
-    this.onIceCandidateCallback = onIceCandidate;
     this.onRemoteStreamCallback = onRemoteStream;
-    this.onConnectionStateCallback = onConnectionState || null;
-    this.iceCandidateQueue = [];
+    this.onIceCandidateCallback = onIceCandidate;
 
-    const config = this.getRTCConfiguration();
-    this.pc = new RTCPeerConnection(config);
-    this.remoteStream = new MediaStream();
+    const config = getIceServers();
+    const pc = new RTCPeerConnection(config);
+    this.peerConnection = pc;
 
-    // Attach local tracks to PeerConnection
-    if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => {
-        if (this.pc && this.localStream) {
-          this.pc.addTrack(track, this.localStream);
-        }
-      });
-    }
-
-    // Handle remote track
-    this.pc.ontrack = (event) => {
-      if (event.streams && event.streams[0]) {
-        event.streams[0].getTracks().forEach((t) => {
-          if (this.remoteStream && !this.remoteStream.getTracks().includes(t)) {
-            this.remoteStream.addTrack(t);
-          }
-        });
-        if (this.onRemoteStreamCallback && this.remoteStream) {
-          this.onRemoteStreamCallback(this.remoteStream);
-        }
-      }
-    };
-
-    // Handle ICE Candidate
-    this.pc.onicecandidate = (event) => {
+    pc.onicecandidate = (event) => {
       if (event.candidate && this.onIceCandidateCallback) {
         this.onIceCandidateCallback(event.candidate);
       }
     };
 
-    // Monitor Connection state
-    this.pc.onconnectionstatechange = () => {
-      if (this.pc && this.onConnectionStateCallback) {
-        this.onConnectionStateCallback(this.pc.connectionState);
+    pc.ontrack = (event) => {
+      console.log('[WebRTC] Received remote track:', event.track.kind);
+      if (event.streams && event.streams[0]) {
+        if (this.onRemoteStreamCallback) {
+          this.onRemoteStreamCallback(event.streams[0]);
+        }
       }
     };
 
-    return this.pc;
+    pc.onconnectionstatechange = () => {
+      console.log('[WebRTC] Connection state:', pc.connectionState);
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      console.log('[WebRTC] ICE Connection state:', pc.iceConnectionState);
+    };
+
+    // Add local tracks if available
+    if (this.localStream) {
+      this.localStream.getTracks().forEach((track) => {
+        pc.addTrack(track, this.localStream!);
+      });
+    }
+
+    return pc;
   }
 
   async createOffer(): Promise<RTCSessionDescriptionInit> {
-    if (!this.pc) throw new Error('Peer connection not initialized');
-    const offer = await this.pc.createOffer();
-    await this.pc.setLocalDescription(offer);
+    if (!this.peerConnection) throw new Error('PeerConnection not initialized');
+    const offer = await this.peerConnection.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: true,
+    });
+    await this.peerConnection.setLocalDescription(offer);
     return offer;
   }
 
-  async createAnswer(): Promise<RTCSessionDescriptionInit> {
-    if (!this.pc) throw new Error('Peer connection not initialized');
-    const answer = await this.pc.createAnswer();
-    await this.pc.setLocalDescription(answer);
+  async handleOfferAndCreateAnswer(offer: RTCSessionDescriptionInit): Promise<RTCSessionDescriptionInit> {
+    if (!this.peerConnection) throw new Error('PeerConnection not initialized');
+    await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+    await this.processPendingCandidates();
+
+    const answer = await this.peerConnection.createAnswer();
+    await this.peerConnection.setLocalDescription(answer);
     return answer;
   }
 
-  async setRemoteDescription(sdp: RTCSessionDescriptionInit): Promise<void> {
-    if (!this.pc) throw new Error('Peer connection not initialized');
-    const desc = new RTCSessionDescription(sdp);
-    await this.pc.setRemoteDescription(desc);
-
-    // Process queued ICE candidates
-    while (this.iceCandidateQueue.length > 0) {
-      const candidate = this.iceCandidateQueue.shift();
-      if (candidate) {
-        await this.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
-      }
-    }
+  async handleAnswer(answer: RTCSessionDescriptionInit): Promise<void> {
+    if (!this.peerConnection) throw new Error('PeerConnection not initialized');
+    await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+    await this.processPendingCandidates();
   }
 
   async addIceCandidate(candidate: RTCIceCandidateInit): Promise<void> {
-    if (!this.pc || !this.pc.remoteDescription || !this.pc.remoteDescription.type) {
-      this.iceCandidateQueue.push(candidate);
+    if (!this.peerConnection || !this.peerConnection.remoteDescription) {
+      console.log('[WebRTC] Queuing ICE candidate (remote description not set yet)');
+      this.pendingIceCandidates.push(candidate);
       return;
     }
 
     try {
-      await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
-    } catch (_) {}
+      await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (err) {
+      console.error('[WebRTC] Failed to add ICE candidate:', err);
+    }
   }
 
-  toggleAudio(enabled: boolean): boolean {
+  private async processPendingCandidates(): Promise<void> {
+    if (!this.peerConnection || this.pendingIceCandidates.length === 0) return;
+    console.log(`[WebRTC] Applying ${this.pendingIceCandidates.length} queued ICE candidates`);
+    for (const cand of this.pendingIceCandidates) {
+      try {
+        await this.peerConnection.addIceCandidate(new RTCIceCandidate(cand));
+      } catch (err) {
+        console.error('[WebRTC] Failed to add queued candidate:', err);
+      }
+    }
+    this.pendingIceCandidates = [];
+  }
+
+  toggleAudio(muted: boolean): void {
     if (this.localStream) {
-      const audioTracks = this.localStream.getAudioTracks();
-      audioTracks.forEach((track) => {
+      this.localStream.getAudioTracks().forEach((track) => {
+        track.enabled = !muted;
+      });
+    }
+  }
+
+  toggleVideo(enabled: boolean): void {
+    if (this.localStream) {
+      this.localStream.getVideoTracks().forEach((track) => {
         track.enabled = enabled;
       });
-      return enabled;
-    }
-    return false;
-  }
-
-  toggleVideo(enabled: boolean): boolean {
-    if (this.localStream) {
-      const videoTracks = this.localStream.getVideoTracks();
-      videoTracks.forEach((track) => {
-        track.enabled = enabled;
-      });
-      return enabled;
-    }
-    return false;
-  }
-
-  async startScreenShare(onEndCallback?: () => void): Promise<MediaStream | null> {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-      throw new Error('Screen sharing is not supported by your browser.');
-    }
-
-    try {
-      this.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-      const screenVideoTrack = this.screenStream.getVideoTracks()[0];
-
-      if (screenVideoTrack && this.pc) {
-        const senders = this.pc.getSenders();
-        const videoSender = senders.find((s) => s.track && s.track.kind === 'video');
-
-        if (videoSender) {
-          videoSender.replaceTrack(screenVideoTrack);
-        } else if (this.localStream) {
-          this.pc.addTrack(screenVideoTrack, this.localStream);
-        }
-
-        screenVideoTrack.onended = () => {
-          this.stopScreenShare();
-          if (onEndCallback) onEndCallback();
-        };
-      }
-
-      return this.screenStream;
-    } catch (err: any) {
-      if (err.name === 'NotAllowedError') return null; // User cancelled prompt
-      throw err;
-    }
-  }
-
-  stopScreenShare() {
-    if (this.screenStream) {
-      this.screenStream.getTracks().forEach((track) => track.stop());
-      this.screenStream = null;
-    }
-
-    if (this.cameraVideoTrack && this.pc) {
-      const senders = this.pc.getSenders();
-      const videoSender = senders.find((s) => s.track && s.track.kind === 'video');
-      if (videoSender) {
-        videoSender.replaceTrack(this.cameraVideoTrack);
-      }
     }
   }
 
@@ -277,41 +162,17 @@ export class WebRTCService {
     return this.localStream;
   }
 
-  getRemoteStream(): MediaStream | null {
-    return this.remoteStream;
-  }
-
-  cleanupPeerConnection() {
-    if (this.pc) {
-      this.pc.onicecandidate = null;
-      this.pc.ontrack = null;
-      this.pc.onconnectionstatechange = null;
-      this.pc.close();
-      this.pc = null;
-    }
-    this.iceCandidateQueue = [];
-  }
-
-  cleanupLocalMedia() {
-    if (this.screenStream) {
-      this.screenStream.getTracks().forEach((track) => track.stop());
-      this.screenStream = null;
-    }
+  close(): void {
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => track.stop());
       this.localStream = null;
     }
-    if (this.remoteStream) {
-      this.remoteStream.getTracks().forEach((track) => track.stop());
-      this.remoteStream = null;
+    if (this.peerConnection) {
+      this.peerConnection.close();
+      this.peerConnection = null;
     }
-    this.cameraVideoTrack = null;
-  }
-
-  destroy() {
-    this.cleanupPeerConnection();
-    this.cleanupLocalMedia();
+    this.pendingIceCandidates = [];
+    this.onRemoteStreamCallback = null;
+    this.onIceCandidateCallback = null;
   }
 }
-
-export const webrtcService = new WebRTCService();

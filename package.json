@@ -1,33 +1,32 @@
 {
-  "name": "secureconnect-frontend",
+  "name": "chat-app",
   "private": true,
-  "version": "1.0.0",
+  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
-    "lint": "eslint .",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
     "preview": "vite preview"
   },
   "dependencies": {
-    "axios": "^1.20.0",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.453.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.27.0",
+    "lucide-react": "^1.49.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.4",
     "socket.io-client": "^4.8.4",
-    "tailwind-merge": "^2.5.4"
+    "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
-    "@types/node": "^22.7.5",
-    "@types/react": "^18.3.11",
-    "@types/react-dom": "^18.3.1",
-    "@vitejs/plugin-react": "^4.3.2",
-    "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.47",
-    "tailwindcss": "^3.4.14",
-    "typescript": "^5.6.3",
-    "vite": "^5.4.9"
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.19.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "oxlint": "^1.81.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0"
   }
 }

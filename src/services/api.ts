@@ -1,20 +1,70 @@
-import axios, { AxiosResponse, AxiosError } from 'axios';
-
-export const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
-
-export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  timeout: 10000,
-});
-
-apiClient.interceptors.response.use(
-  (response: AxiosResponse) => response.data,
-  (error: AxiosError<any>) => {
-    const errorMsg = error.response?.data?.message || error.message || 'API Request Failed';
-    return Promise.reject(new Error(errorMsg));
+const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  if (typeof window !== 'undefined') {
+    return '/api';
   }
-);
+  return 'http://localhost:5000/api';
+};
+
+const API_BASE_URL = getApiBaseUrl();
+
+export interface ApiResponse<T = any> {
+  success: boolean;
+  message?: string;
+  data?: T;
+  error?: string;
+}
+
+export const getToken = (): string | null => {
+  return localStorage.getItem('auth_token');
+};
+
+export const setToken = (token: string | null): void => {
+  if (token) {
+    localStorage.setItem('auth_token', token);
+  } else {
+    localStorage.removeItem('auth_token');
+  }
+};
+
+export const apiFetch = async <T = any>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<ApiResponse<T>> => {
+  const token = getToken();
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> || {}),
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const config: RequestInit = {
+    ...options,
+    headers,
+    credentials: 'include',
+  };
+
+  try {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+    const data = await response.json();
+
+    if (!response.ok) {
+      return {
+        success: false,
+        message: data.message || `HTTP error! Status: ${response.status}`,
+      };
+    }
+
+    return data;
+  } catch (err: any) {
+    console.error('API Fetch error:', err);
+    return {
+      success: false,
+      message: err.message || 'Network error or backend unavailable',
+    };
+  }
+};

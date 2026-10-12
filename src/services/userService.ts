@@ -1,60 +1,29 @@
-import { apiClient } from './api';
-import { User, PrivacySettings, SessionDevice } from '../types';
-import { mockSessions } from '../mock/users';
+import { apiFetch } from './api';
+import type { User } from '../types';
 
 export const userService = {
-  async getMyProfile(): Promise<User> {
-    const res = await apiClient.get<{ success: boolean; data: User }>('/users/me');
-    return (res as any).data;
+  async getAllUsers() {
+    const res = await apiFetch<any>('/users');
+    if (res.success && res.data) {
+      const list = res.data.users || (Array.isArray(res.data) ? res.data : []);
+      return { success: true, data: list };
+    }
+    return { success: false, data: [] };
   },
 
-  async getUsers(): Promise<User[]> {
-    const res = await apiClient.get<{ success: boolean; data: User[] }>('/users/search?q=');
-    return (res as any).data || [];
+  async searchUsers(query: string) {
+    const res = await apiFetch<any>(`/users/search?q=${encodeURIComponent(query)}`);
+    if (res.success && res.data) {
+      const list = res.data.users || (Array.isArray(res.data) ? res.data : []);
+      return { success: true, data: list };
+    }
+    return { success: false, data: [] };
   },
 
-  async searchUsers(query: string): Promise<User[]> {
-    if (!query.trim()) return [];
-    const res = await apiClient.get<{ success: boolean; data: User[] }>(`/users/search?q=${encodeURIComponent(query)}`);
-    return (res as any).data || [];
+  async updateProfile(data: { name?: string; about?: string; profilePicture?: string; phone?: string }) {
+    return await apiFetch<{ user: User }>('/users/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
   },
-
-  async getPublicProfile(username: string): Promise<User> {
-    const res = await apiClient.get<{ success: boolean; data: User }>(`/users/${encodeURIComponent(username)}`);
-    return (res as any).data;
-  },
-
-  async updateProfile(updates: { name?: string; username?: string; bio?: string; profilePhoto?: string | null }): Promise<User> {
-    const res = await apiClient.patch<{ success: boolean; data: User }>('/users/me', updates);
-    return (res as any).data;
-  },
-
-  async blockUser(userId: string): Promise<void> {
-    await apiClient.post(`/users/${userId}/block`);
-  },
-
-  async unblockUser(userId: string): Promise<void> {
-    await apiClient.delete(`/users/${userId}/block`);
-  },
-
-  async getPrivacySettings(): Promise<PrivacySettings> {
-    const res = await apiClient.get<{ success: boolean; data: PrivacySettings }>('/users/me/privacy');
-    return (res as any).data;
-  },
-
-  async updatePrivacySettings(settings: Partial<PrivacySettings>): Promise<PrivacySettings> {
-    const res = await apiClient.patch<{ success: boolean; data: PrivacySettings }>('/users/me/privacy', settings);
-    return (res as any).data;
-  },
-
-  async getSessions(): Promise<SessionDevice[]> {
-    return Promise.resolve(mockSessions);
-  },
-
-  async revokeSession(id: string): Promise<void> {
-    const idx = mockSessions.findIndex(s => s.id === id);
-    if (idx !== -1) mockSessions.splice(idx, 1);
-    return Promise.resolve();
-  }
 };
-
