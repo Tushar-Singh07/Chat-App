@@ -152,6 +152,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const webrtcRef = useRef<WebRTCService | null>(null);
   const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const earlyIceCandidatesRef = useRef<{ callId?: string; candidate: RTCIceCandidateInit }[]>([]);
 
   // Theme Sync across HTML root, colorScheme, and localStorage
   useEffect(() => {
@@ -289,6 +290,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       webrtcRef.current.close();
       webrtcRef.current = null;
     }
+    earlyIceCandidatesRef.current = [];
     setActiveCallSession({
       callId: null,
       peerUser: null,
@@ -468,6 +470,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         if (webrtcRef.current) {
           await webrtcRef.current.handleAnswer(answer);
+          if (earlyIceCandidatesRef.current.length > 0) {
+            console.log(`[CALL] Draining ${earlyIceCandidatesRef.current.length} early ICE candidates on caller`);
+            for (const item of earlyIceCandidatesRef.current) {
+              await webrtcRef.current.addIceCandidate(item.candidate);
+            }
+            earlyIceCandidatesRef.current = [];
+          }
         }
         setActiveCallSession((prev) => (prev.callId === callId ? { ...prev, callState: 'connected' } : prev));
         addToast({ type: 'success', title: 'Call Connected' });
@@ -523,9 +532,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     // 9. ICE Candidates
-    socketService.onIceCandidate(({ candidate }) => {
-      if (webrtcRef.current) {
+    socketService.onIceCandidate(({ callId, candidate }) => {
+      console.log('[CALL] Received ICE candidate:', candidate);
+      if (webrtcRef.current && webrtcRef.current.hasPeerConnection()) {
         webrtcRef.current.addIceCandidate(candidate);
+      } else {
+        console.log('[CALL] WebRTC not ready yet, queuing early candidate');
+        earlyIceCandidatesRef.current.push({ callId, candidate });
       }
     });
 
@@ -778,8 +791,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const answer = await webrtc.handleOfferAndCreateAnswer(data.offer);
 
+      // Drain any candidates that arrived while receiver was ringing
+      if (earlyIceCandidatesRef.current.length > 0) {
+        console.log(`[CALL] Draining ${earlyIceCandidatesRef.current.length} early ICE candidates on receiver`);
+        for (const item of earlyIceCandidatesRef.current) {
+          await webrtc.addIceCandidate(item.candidate);
+        }
+        earlyIceCandidatesRef.current = [];
+      }
+
       socketService.acceptCall({
         callId: data.callId,
+        to: data.callerId,
+        callerId: data.callerId,
         answer,
       });
 

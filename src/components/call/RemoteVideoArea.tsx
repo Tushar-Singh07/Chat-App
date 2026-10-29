@@ -1,10 +1,11 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { ShieldCheck, Lock, Signal } from 'lucide-react';
 import type { User } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { Avatar } from '../Avatar';
 import { CallStatus, type CallState } from './CallStatus';
 import { CallTimer } from './CallTimer';
+import { cn } from '../../utils/cn';
 
 interface RemoteVideoAreaProps {
   peerUser: User;
@@ -25,92 +26,117 @@ export const RemoteVideoArea: React.FC<RemoteVideoAreaProps> = ({
 }) => {
   const { getUserPresence } = useApp();
   const peerPresence = getUserPresence(peerUser.id);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const internalVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [hasLiveVideoTrack, setHasLiveVideoTrack] = useState<boolean>(false);
 
-  // Dynamic canvas ambient video simulation for connected state
-  useEffect(() => {
-    if (callState !== 'connected' || !isRemoteCameraOn) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  // Helper to attach stream to video element and handle browser autoplay policy
+  const attachAndPlay = useCallback((videoEl: HTMLVideoElement | null, stream: MediaStream | null) => {
+    if (!videoEl || !stream) return;
 
-    let animFrameId: number;
-    let step = 0;
-
-    const render = () => {
-      step += 0.02;
-      const w = (canvas.width = canvas.offsetWidth || 640);
-      const h = (canvas.height = canvas.offsetHeight || 480);
-
-      // Deep, futuristic video gradient backdrop
-      const grad = ctx.createLinearGradient(
-        w / 2 + Math.sin(step) * 80,
-        0,
-        w / 2 + Math.cos(step) * 80,
-        h
-      );
-      grad.addColorStop(0, '#0f172a');
-      grad.addColorStop(0.5, '#1e1b4b');
-      grad.addColorStop(1, '#09090b');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, w, h);
-
-      // Ambient radial glow behind remote participant avatar/silhouette
-      const auraGrad = ctx.createRadialGradient(
-        w / 2 + Math.sin(step * 0.8) * 15,
-        h / 2 + Math.cos(step * 0.8) * 12,
-        20,
-        w / 2,
-        h / 2,
-        240
-      );
-      auraGrad.addColorStop(0, 'rgba(99, 102, 241, 0.3)');
-      auraGrad.addColorStop(0.6, 'rgba(168, 85, 247, 0.12)');
-      auraGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = auraGrad;
-      ctx.beginPath();
-      ctx.arc(w / 2, h / 2, 240, 0, Math.PI * 2);
-      ctx.fill();
-
-      animFrameId = requestAnimationFrame(render);
-    };
-
-    render();
-
-    return () => {
-      cancelAnimationFrame(animFrameId);
-    };
-  }, [callState, isRemoteCameraOn]);
-
-  // Attach remote stream to video element
-  useEffect(() => {
-    if (remoteVideoRef?.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
-      remoteVideoRef.current.play().catch((err) => console.log('Remote video play error:', err));
+    if (videoEl.srcObject !== stream) {
+      console.log('[RemoteVideoArea] Binding stream to video element:', stream.id, 'Tracks:', stream.getTracks().length);
+      videoEl.srcObject = stream;
     }
-  }, [remoteStream, remoteVideoRef]);
+
+    const checkTracks = () => {
+      const vTracks = stream.getVideoTracks();
+      const hasLive = vTracks.length > 0 && vTracks.some((t) => t.readyState === 'live');
+      setHasLiveVideoTrack(hasLive);
+    };
+
+    checkTracks();
+
+    const playPromise = videoEl.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          checkTracks();
+        })
+        .catch((err) => {
+          console.warn('[RemoteVideoArea] Direct play() blocked, attempting muted fallback:', err.message);
+          videoEl.muted = true;
+          videoEl
+            .play()
+            .then(() => {
+              // Unmute once playback starts
+              videoEl.muted = false;
+              checkTracks();
+            })
+            .catch((e) => console.error('[RemoteVideoArea] Muted play also failed:', e));
+        });
+    }
+  }, []);
+
+  // Monitor remoteStream changes and dynamically added tracks
+  useEffect(() => {
+    const videoEl = remoteVideoRef?.current || internalVideoRef.current;
+    attachAndPlay(videoEl, remoteStream || null);
+
+    // Also attach to dedicated audio element for guaranteed sound
+    if (remoteAudioRef.current && remoteStream) {
+      if (remoteAudioRef.current.srcObject !== remoteStream) {
+        remoteAudioRef.current.srcObject = remoteStream;
+      }
+      remoteAudioRef.current.play().catch((err) => console.warn('[RemoteVideoArea] Audio play error:', err));
+    }
+
+    if (remoteStream) {
+      const handleTrackChange = () => {
+        const vTracks = remoteStream.getVideoTracks();
+        const hasLive = vTracks.length > 0 && vTracks.some((t) => t.readyState === 'live');
+        setHasLiveVideoTrack(hasLive);
+        const currentEl = remoteVideoRef?.current || internalVideoRef.current;
+        if (currentEl) {
+          attachAndPlay(currentEl, remoteStream);
+        }
+      };
+
+      remoteStream.addEventListener('addtrack', handleTrackChange);
+      remoteStream.addEventListener('removetrack', handleTrackChange);
+
+      remoteStream.getVideoTracks().forEach((track) => {
+        track.addEventListener('unmute', handleTrackChange);
+        track.addEventListener('mute', handleTrackChange);
+      });
+
+      return () => {
+        remoteStream.removeEventListener('addtrack', handleTrackChange);
+        remoteStream.removeEventListener('removetrack', handleTrackChange);
+        remoteStream.getVideoTracks().forEach((track) => {
+          track.removeEventListener('unmute', handleTrackChange);
+          track.removeEventListener('mute', handleTrackChange);
+        });
+      };
+    }
+  }, [remoteStream, remoteVideoRef, attachAndPlay]);
 
   const isConnected = callState === 'connected';
-  const hasRemoteVideo = isConnected && isRemoteCameraOn && remoteStream;
+  const showVideoFeed = isConnected && isRemoteCameraOn && hasLiveVideoTrack;
 
   return (
     <div className="relative w-full h-full bg-zinc-950 flex flex-col justify-between overflow-hidden select-none">
-      {/* Real WebRTC Video Stream Element */}
+      {/* Hidden dedicated audio element to guarantee remote voice playback */}
+      <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
+
+      {/* Real WebRTC Remote Video Element - NEVER display: none so decoder stays active */}
       <video
-        ref={remoteVideoRef}
+        ref={(el) => {
+          internalVideoRef.current = el;
+          if (remoteVideoRef && 'current' in remoteVideoRef) {
+            (remoteVideoRef as any).current = el;
+          }
+          if (el && remoteStream) {
+            attachAndPlay(el, remoteStream);
+          }
+        }}
         autoPlay
         playsInline
-        className={isConnected && isRemoteCameraOn ? 'w-full h-full object-cover absolute inset-0 z-10' : 'hidden'}
+        className={cn(
+          'w-full h-full object-cover absolute inset-0 transition-opacity duration-300',
+          showVideoFeed ? 'opacity-100 z-10' : 'opacity-0 -z-10 pointer-events-none'
+        )}
       />
-
-      {/* Simulated Video Canvas when connected & remote camera ON (fallback if no real stream) */}
-      {isConnected && isRemoteCameraOn && !remoteStream && (
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full object-cover z-0"
-        />
-      )}
 
       {/* Top Overlay Header Bar */}
       <div className="relative z-20 flex items-center justify-between p-4 sm:p-6 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
@@ -146,8 +172,8 @@ export const RemoteVideoArea: React.FC<RemoteVideoAreaProps> = ({
         </div>
       </div>
 
-      {/* Center Stage: Shown before connection OR when remote camera is disabled */}
-      {(!isConnected || !isRemoteCameraOn) && (
+      {/* Center Stage: Shown before connection OR when video feed is not yet available */}
+      {!showVideoFeed && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 text-center bg-zinc-950/85 backdrop-blur-md">
           {/* Avatar Ring Animation */}
           <div className="relative flex items-center justify-center mb-6">
@@ -182,6 +208,12 @@ export const RemoteVideoArea: React.FC<RemoteVideoAreaProps> = ({
           {!isRemoteCameraOn && isConnected && (
             <p className="mt-4 text-xs text-zinc-400 bg-black/50 px-3 py-1 rounded-full border border-white/10">
               Camera is turned off
+            </p>
+          )}
+
+          {isConnected && isRemoteCameraOn && !hasLiveVideoTrack && (
+            <p className="mt-4 text-xs text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 animate-pulse">
+              Connecting video stream...
             </p>
           )}
         </div>

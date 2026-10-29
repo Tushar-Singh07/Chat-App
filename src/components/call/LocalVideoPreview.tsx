@@ -115,7 +115,15 @@ export const LocalVideoPreview: React.FC<LocalVideoPreviewProps> = ({
     >
       {/* Real WebRTC Local Video Stream Element */}
       <video
-        ref={localVideoRef}
+        ref={(el) => {
+          if (localVideoRef && 'current' in localVideoRef) {
+            (localVideoRef as any).current = el;
+          }
+          if (el && localStream && el.srcObject !== localStream) {
+            el.srcObject = localStream;
+            el.play().catch(console.warn);
+          }
+        }}
         autoPlay
         muted
         playsInline

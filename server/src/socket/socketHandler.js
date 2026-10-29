@@ -146,19 +146,23 @@ export const setupSocketIO = (io) => {
     });
 
     // 2. Receiver accepts call
-    socket.on('call:accept', ({ callId, answer }) => {
+    socket.on('call:accept', ({ callId, to, callerId, answer }) => {
       console.log(`[CALL] ${userId} accepted call ${callId}`);
       const call = activeCalls.get(callId);
+      const targetCallerId = (call && call.callerId) || to || callerId;
       if (call) {
         call.status = 'connected';
+      }
+      if (targetCallerId) {
         // Notify caller
-        io.to(`user:${call.callerId}`).emit('call:accepted', { callId, answer });
+        io.to(`user:${targetCallerId}`).emit('call:accepted', { callId, answer });
       }
     });
 
     // 3. ICE Candidate exchange
     socket.on('call:ice-candidate', ({ callId, to, candidate }) => {
-      const targetId = to;
+      const call = activeCalls.get(callId);
+      const targetId = to || (call ? (call.callerId === userId ? call.receiverId : call.callerId) : null);
       if (targetId) {
         io.to(`user:${targetId}`).emit('call:ice-candidate', { callId, candidate, from: userId });
       }

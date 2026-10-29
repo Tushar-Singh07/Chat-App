@@ -106,7 +106,7 @@ class SocketService {
     this.socket?.emit('call:initiate', payload);
   }
 
-  acceptCall(payload: { callId: string; answer: any }) {
+  acceptCall(payload: { callId: string; to?: string; callerId?: string; answer: any }) {
     this.socket?.emit('call:accept', payload);
   }
 
