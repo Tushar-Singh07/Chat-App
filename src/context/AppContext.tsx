@@ -119,7 +119,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [calls, setCalls] = useState<Call[]>([]);
   const [activeTab, setActiveTab] = useState<ActiveTab>('chats');
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('whatsapp_theme') as 'dark' | 'light';
+      if (saved === 'dark' || saved === 'light') return saved;
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+        return 'light';
+      }
+    }
+    return 'dark';
+  });
   const [typingUsers, setTypingUsers] = useState<Record<string, boolean>>({});
   const [userPresences, setUserPresences] = useState<Record<string, UserPresence>>({});
 
@@ -144,13 +153,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const webrtcRef = useRef<WebRTCService | null>(null);
   const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Theme Sync
+  // Theme Sync across HTML root, colorScheme, and localStorage
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     const root = window.document.documentElement;
     if (theme === 'dark') {
       root.classList.add('dark');
+      root.classList.remove('light');
+      root.style.colorScheme = 'dark';
     } else {
       root.classList.remove('dark');
+      root.classList.add('light');
+      root.style.colorScheme = 'light';
+    }
+    try {
+      localStorage.setItem('whatsapp_theme', theme);
+    } catch (e) {
+      // Ignore storage errors in restricted iframes
     }
   }, [theme]);
 

@@ -17,9 +17,9 @@ export const LoadingState: React.FC<LoadingStateProps> = ({
 }) => {
   if (type === 'fullScreen') {
     return (
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-zinc-900 text-white gap-4">
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white gap-4 transition-colors">
         <Loader2 className="w-10 h-10 animate-spin text-emerald-500" />
-        <p className="text-sm font-medium tracking-wide text-zinc-300">{message}</p>
+        <p className="text-sm font-medium tracking-wide text-zinc-600 dark:text-zinc-300">{message}</p>
       </div>
     );
   }

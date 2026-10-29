@@ -59,14 +59,14 @@ export const StatusPage: React.FC = () => {
       />
 
       {/* ----------------- DESKTOP MAIN PLACEHOLDER / PREVIEW PANEL ----------------- */}
-      <div className="hidden md:flex flex-1 flex-col items-center justify-center bg-zinc-950 text-white relative p-6 border-l border-zinc-200 dark:border-[#222d34]">
+      <div className="hidden md:flex flex-1 flex-col items-center justify-center bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white relative p-6 border-l border-zinc-200 dark:border-[#222d34]">
         <div className="text-center max-w-sm space-y-4">
           <div className="w-20 h-20 mx-auto rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/20 shadow-xl">
             <CircleDashed className="w-10 h-10 animate-spin-slow" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white mb-1">Status Updates</h2>
-            <p className="text-xs text-zinc-400 leading-relaxed">
+            <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-1">Status Updates</h2>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
               Click on any contact's status to view updates or tap the plus icon to add your own status update.
             </p>
           </div>
