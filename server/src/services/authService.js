@@ -4,6 +4,13 @@ import { sendVerificationEmail } from '../utils/emailService.js';
 // Temporary memory store for OTPs if user is registering for the first time
 const pendingOTPStore = new Map(); // email -> { code, expires }
 
+export const isSmtpConfigured = () => {
+  return Boolean(
+    (process.env.EMAIL_USER && process.env.EMAIL_PASS) ||
+    (process.env.SMTP_USER && process.env.SMTP_PASS)
+  );
+};
+
 export const registerUser = async ({ name, email, phone, password }) => {
   const normalizedEmail = email.toLowerCase().trim();
   const existingEmail = await User.findOne({ email: normalizedEmail });
@@ -22,6 +29,8 @@ export const registerUser = async ({ name, email, phone, password }) => {
     }
   }
 
+  const hasSmtp = isSmtpConfigured();
+
   // Generate 6-digit verification code for new user
   const code = Math.floor(100000 + Math.random() * 900000).toString();
   const expires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
@@ -33,16 +42,18 @@ export const registerUser = async ({ name, email, phone, password }) => {
     password,
     isOnline: false,
     lastSeen: new Date(),
-    isVerified: false,
-    verificationCode: code,
-    verificationCodeExpires: expires,
+    isVerified: !hasSmtp, // Automatically verified if email service is not configured
+    verificationCode: hasSmtp ? code : undefined,
+    verificationCodeExpires: hasSmtp ? expires : undefined,
   });
 
-  // Automatically dispatch verification email to the newly registered user
-  try {
-    await sendVerificationEmail(normalizedEmail, code);
-  } catch (emailErr) {
-    console.error(`Failed to dispatch verification email to ${normalizedEmail}:`, emailErr);
+  // Automatically dispatch verification email if SMTP is configured
+  if (hasSmtp) {
+    try {
+      await sendVerificationEmail(normalizedEmail, code);
+    } catch (emailErr) {
+      console.error(`Failed to dispatch verification email to ${normalizedEmail}:`, emailErr);
+    }
   }
 
   return user;
@@ -86,23 +97,31 @@ export const loginUser = async ({ email, password }) => {
 
   // If a new user registered but has not yet verified their email code
   if (user.isVerified === false) {
-    // Generate fresh code and email it so they can easily complete verification
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    user.verificationCode = code;
-    user.verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
-    await user.save();
+    if (!isSmtpConfigured()) {
+      // Auto-verify if email service is not configured on server
+      user.isVerified = true;
+      user.verificationCode = undefined;
+      user.verificationCodeExpires = undefined;
+      await user.save();
+    } else {
+      // Generate fresh code and email it so they can easily complete verification
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      user.verificationCode = code;
+      user.verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
+      await user.save();
 
-    try {
-      await sendVerificationEmail(normalizedEmail, code);
-    } catch (e) {
-      console.error(`Failed to send verification email to ${normalizedEmail}:`, e);
+      try {
+        await sendVerificationEmail(normalizedEmail, code);
+      } catch (e) {
+        console.error(`Failed to send verification email to ${normalizedEmail}:`, e);
+      }
+
+      const error = new Error('Please verify your email address to complete registration');
+      error.statusCode = 403;
+      error.requiresVerification = true;
+      error.email = normalizedEmail;
+      throw error;
     }
-
-    const error = new Error('Please verify your email address to complete registration');
-    error.statusCode = 403;
-    error.requiresVerification = true;
-    error.email = normalizedEmail;
-    throw error;
   }
 
   // Ensure verified status is persisted
@@ -134,13 +153,28 @@ export const requestVerificationCode = async (email) => {
     pendingOTPStore.set(normalizedEmail, { code, expires });
   }
 
-  // Send Email via Nodemailer strictly to the given recipient email
-  await sendVerificationEmail(normalizedEmail, code);
-
-  return {
-    success: true,
-    message: `Verification code sent to ${normalizedEmail}`,
-  };
+  if (isSmtpConfigured()) {
+    try {
+      await sendVerificationEmail(normalizedEmail, code);
+      return {
+        success: true,
+        message: `Verification code sent to ${normalizedEmail}`,
+      };
+    } catch (err) {
+      console.error(`Failed to dispatch email to ${normalizedEmail}:`, err.message);
+      return {
+        success: true,
+        message: `Verification code: ${code}`,
+        code,
+      };
+    }
+  } else {
+    return {
+      success: true,
+      message: `Verification code: ${code}`,
+      code,
+    };
+  }
 };
 
 // Verify Code & Login

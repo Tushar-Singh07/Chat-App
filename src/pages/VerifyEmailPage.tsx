@@ -62,10 +62,14 @@ export const VerifyEmailPage: React.FC = () => {
       setSentToEmail(trimmedEmail);
       setResendCooldown(60);
 
+      if ((result as any).code) {
+        setVerificationCode((result as any).code);
+      }
+
       addToast({
         type: 'success',
-        title: 'Verification Code Sent!',
-        description: `Check your inbox at ${trimmedEmail} for your 6-digit code.`,
+        title: (result as any).code ? 'Verification Code Ready' : 'Verification Code Sent!',
+        description: result.message || `Check your inbox at ${trimmedEmail} for your 6-digit code.`,
       });
     } else {
       setFormError(result.message || 'Failed to send verification code. Please check your email.');

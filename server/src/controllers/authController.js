@@ -14,6 +14,19 @@ export const register = async (req, res, next) => {
     const { name, email, phone, password } = req.body;
     const user = await registerUser({ name, email, phone, password });
 
+    if (user.isVerified) {
+      const token = generateToken(res, user._id);
+      return res.status(201).json({
+        success: true,
+        requiresVerification: false,
+        message: 'Account created successfully! You are logged in.',
+        data: {
+          user,
+          token,
+        },
+      });
+    }
+
     res.status(201).json({
       success: true,
       requiresVerification: true,

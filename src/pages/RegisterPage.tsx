@@ -47,12 +47,21 @@ export const RegisterPage: React.FC = () => {
     setSubmitting(false);
 
     if (result.success) {
-      addToast({
-        type: 'success',
-        title: 'Account Created Successfully!',
-        description: `We've sent a 6-digit verification code to ${email}.`,
-      });
-      navigate('/verify-email', { state: { email: email.trim().toLowerCase(), fromRegister: true } });
+      if (result.requiresVerification) {
+        addToast({
+          type: 'success',
+          title: 'Account Created Successfully!',
+          description: `We've sent a 6-digit verification code to ${email}.`,
+        });
+        navigate('/verify-email', { state: { email: email.trim().toLowerCase(), fromRegister: true } });
+      } else {
+        addToast({
+          type: 'success',
+          title: 'Welcome to WhatsApp Web!',
+          description: 'Your account was created successfully.',
+        });
+        navigate('/');
+      }
     } else {
       setFormError(result.message || 'Registration failed');
     }

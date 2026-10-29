@@ -24,7 +24,9 @@ export const authService = {
       method: 'POST',
       body: JSON.stringify(payload),
     });
-    // Do not set token: registration requires manual login & verification
+    if (res.success && res.data?.token) {
+      setToken(res.data.token);
+    }
     return res;
   },
 
