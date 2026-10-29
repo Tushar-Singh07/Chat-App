@@ -8,6 +8,7 @@
     "node": ">=18.0.0"
   },
   "scripts": {
+    "build": "echo 'Backend build complete'",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js"
   },
