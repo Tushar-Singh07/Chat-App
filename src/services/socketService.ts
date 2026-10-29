@@ -12,7 +12,8 @@ const getSocketUrl = () => {
   if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
     return window.location.origin;
   }
-  return 'http://localhost:5000';
+  // Production default fallback pointing directly to the live Render backend
+  return 'https://chat-app-st83.onrender.com';
 };
 
 const SOCKET_URL = getSocketUrl();

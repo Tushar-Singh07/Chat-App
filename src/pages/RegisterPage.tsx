@@ -77,21 +77,7 @@ export const RegisterPage: React.FC = () => {
 
         {/* Auth Card */}
         <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl shadow-black/50">
-          {/* Warning banner if backend URL is not configured on production */}
-          {typeof window !== 'undefined' &&
-            window.location.hostname !== 'localhost' &&
-            window.location.hostname !== '127.0.0.1' &&
-            !import.meta.env.VITE_API_URL && (
-              <div className="mb-5 p-3.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-2.5">
-                <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-semibold text-amber-300">Backend Server Not Connected</p>
-                  <p className="text-[11px] text-amber-200/80 mt-0.5">
-                    Please set <code className="bg-black/30 px-1 py-0.5 rounded text-amber-300">VITE_API_URL</code> in your Vercel Project Settings to your Render backend URL.
-                  </p>
-                </div>
-              </div>
-            )}
+
 
           {formError && (
             <div className="mb-6 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm flex items-center gap-2">

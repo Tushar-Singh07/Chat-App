@@ -4,6 +4,10 @@ const getApiBaseUrl = () => {
     const trimmed = envUrl.trim().replace(/\/+$/, '');
     return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
   }
+  // Production default fallback pointing directly to the live Render backend
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return 'https://chat-app-st83.onrender.com/api';
+  }
   // Local development / Vite dev proxy fallback
   return '/api';
 };
