@@ -59,6 +59,12 @@ export const chatService = {
     });
   },
 
+  async markMessagesAsRead(conversationId: string) {
+    return await apiFetch(`/messages/read/${conversationId}`, {
+      method: 'PUT',
+    });
+  },
+
   // Statuses
   async getStatuses() {
     return await apiFetch<Status[]>('/statuses');

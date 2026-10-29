@@ -1,14 +1,28 @@
 import User from '../models/User.js';
 import Call from '../models/Call.js';
+import Conversation from '../models/Conversation.js';
+import Message from '../models/Message.js';
 import { verifyToken } from '../utils/jwt.js';
 
+let ioInstance = null;
+const userSockets = new Map();
+const socketUserMap = new Map();
+const activeCalls = new Map();
+
+export const getIO = () => ioInstance;
+
+export const isUserOnline = (userId) => {
+  if (!userId) return false;
+  const set = userSockets.get(userId.toString());
+  return Boolean(set && set.size > 0);
+};
+
+export const getUserSockets = (userId) => {
+  return userSockets.get(userId?.toString()) || new Set();
+};
+
 export const setupSocketIO = (io) => {
-  // Map of userId -> Set of socketIds
-  const userSockets = new Map();
-  // Map of socketId -> userId
-  const socketUserMap = new Map();
-  // Map of callId -> active call info
-  const activeCalls = new Map();
+  ioInstance = io;
 
   // Socket Authentication Middleware using JWT
   io.use((socket, next) => {
@@ -51,14 +65,58 @@ export const setupSocketIO = (io) => {
     userSet.add(socket.id);
     socketUserMap.set(socket.id, userId);
 
+    const now = new Date();
+
     // Set online in DB and broadcast presence if first connection
     if (isFirstConnection) {
       try {
-        await User.findByIdAndUpdate(userId, { isOnline: true, lastSeen: new Date() });
+        await User.findByIdAndUpdate(userId, { isOnline: true, lastSeen: now });
       } catch (err) {
         console.error('Failed to set user online in DB:', err);
       }
-      io.emit('user_presence_change', { userId, isOnline: true, lastSeen: 'Online' });
+      io.emit('user_presence_change', { userId, isOnline: true, lastSeen: now.toISOString() });
+    }
+
+    // Deliver any pending 'sent' messages from other users now that this user is online
+    try {
+      const userConvs = await Conversation.find({ participants: userId }).select('_id');
+      const convIds = userConvs.map((c) => c._id);
+      if (convIds.length > 0) {
+        const pendingMessages = await Message.find({
+          conversationId: { $in: convIds },
+          senderId: { $ne: userId },
+          status: 'sent',
+        });
+
+        if (pendingMessages.length > 0) {
+          await Message.updateMany(
+            { _id: { $in: pendingMessages.map((m) => m._id) } },
+            { status: 'delivered' }
+          );
+
+          // Group by sender and notify them that their messages were delivered (turn 1 tick -> 2 ticks)
+          const senderGroups = new Map();
+          for (const msg of pendingMessages) {
+            const sId = msg.senderId.toString();
+            if (!senderGroups.has(sId)) {
+              senderGroups.set(sId, []);
+            }
+            senderGroups.get(sId).push({
+              messageId: msg._id.toString(),
+              conversationId: msg.conversationId.toString(),
+            });
+          }
+
+          for (const [sId, deliveredList] of senderGroups.entries()) {
+            io.to(`user:${sId}`).emit('messages_delivered', {
+              messages: deliveredList,
+              status: 'delivered',
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to update pending messages on connect:', err);
     }
 
     // Join / Leave conversation room
@@ -80,9 +138,65 @@ export const setupSocketIO = (io) => {
     });
 
     // Real-Time Messages
-    socket.on('send_message', (message) => {
+    socket.on('send_message', async (message) => {
       if (message && message.conversationId) {
         socket.to(message.conversationId).emit('receive_message', message);
+
+        // Also broadcast to receiver's user room in case they haven't joined the conversation room yet
+        try {
+          const conv = await Conversation.findById(message.conversationId);
+          if (conv && conv.participants) {
+            for (const p of conv.participants) {
+              const pId = p.toString();
+              if (pId !== userId) {
+                io.to(`user:${pId}`).emit('receive_message', message);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('send_message user room broadcast error:', err);
+        }
+      }
+    });
+
+    // Real-Time Read Receipts (Blue Ticks)
+    socket.on('mark_read', async ({ conversationId }) => {
+      if (!conversationId) return;
+      try {
+        const conv = await Conversation.findById(conversationId);
+        if (!conv || !conv.participants.some((p) => p.toString() === userId.toString())) return;
+
+        const unreadMsgs = await Message.find({
+          conversationId,
+          senderId: { $ne: userId },
+          status: { $in: ['sent', 'delivered'] },
+        });
+
+        if (unreadMsgs.length > 0) {
+          await Message.updateMany(
+            { _id: { $in: unreadMsgs.map((m) => m._id) } },
+            { status: 'read' }
+          );
+
+          if (conv.unreadCounts) {
+            conv.unreadCounts.set(userId.toString(), 0);
+            await conv.save();
+          }
+
+          // Emit messages_read event to sender(s)
+          for (const p of conv.participants) {
+            const pId = p.toString();
+            if (pId !== userId) {
+              io.to(`user:${pId}`).emit('messages_read', {
+                conversationId,
+                readerId: userId,
+                status: 'read',
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Socket mark_read error:', err);
       }
     });
 
@@ -217,15 +331,16 @@ export const setupSocketIO = (io) => {
         set.delete(socket.id);
         if (set.size === 0) {
           userSockets.delete(userId);
+          const disconnectTime = new Date();
           try {
-            await User.findByIdAndUpdate(userId, { isOnline: false, lastSeen: new Date() });
+            await User.findByIdAndUpdate(userId, { isOnline: false, lastSeen: disconnectTime });
           } catch (err) {
             console.error('Failed to set user offline in DB:', err);
           }
           io.emit('user_presence_change', {
             userId,
             isOnline: false,
-            lastSeen: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            lastSeen: disconnectTime.toISOString(),
           });
         }
       }

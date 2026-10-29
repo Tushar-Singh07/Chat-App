@@ -44,6 +44,7 @@ import { EmptyState } from '../components/EmptyState';
 import { useToast } from '../context/ToastContext';
 import type { Message, MediaAttachment } from '../types';
 import { cn } from '../utils/cn';
+import { formatLastSeen } from '../utils/formatters';
 import { getUserById } from '../data/users';
 
 export const ChatsPage: React.FC = () => {
@@ -552,7 +553,7 @@ export const ChatsPage: React.FC = () => {
                   <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 leading-tight">
                     {targetUser.name}
                   </h2>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 capitalize flex items-center gap-1">
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
                     {isTyping ? (
                       <span className="text-emerald-500 dark:text-[#00a884] font-semibold animate-pulse flex items-center gap-1">
                         <span>{targetUser.name.split(' ')[0]} is typing</span>
@@ -563,9 +564,9 @@ export const ChatsPage: React.FC = () => {
                         </span>
                       </span>
                     ) : targetPresence?.status === 'online' ? (
-                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">Online</span>
+                      <span className="text-emerald-600 dark:text-[#00a884] font-medium">online</span>
                     ) : (
-                      <span>{targetPresence?.lastSeen || targetUser.lastSeen || 'Offline'}</span>
+                      <span>{targetPresence?.lastSeen || formatLastSeen(targetUser.lastSeen, false)}</span>
                     )}
                   </p>
                 </div>

@@ -82,14 +82,14 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
     switch (lastMsg.status) {
       case 'sending':
         return <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-400 inline flex-shrink-0" />;
-      case 'sent':
-        return <Check className="w-3.5 h-3.5 text-zinc-400 inline flex-shrink-0" />;
       case 'delivered':
-        return <CheckCheck className="w-3.5 h-3.5 text-zinc-400 inline flex-shrink-0" />;
+        return <CheckCheck className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-400 inline flex-shrink-0" />;
       case 'seen':
       case 'read':
+        return <CheckCheck className="w-3.5 h-3.5 text-[#53bdeb] inline flex-shrink-0" />;
+      case 'sent':
       default:
-        return <CheckCheck className="w-3.5 h-3.5 text-sky-400 dark:text-[#53bdeb] inline flex-shrink-0" />;
+        return <Check className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-400 inline flex-shrink-0" />;
     }
   };
 

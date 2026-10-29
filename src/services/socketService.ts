@@ -92,6 +92,26 @@ class SocketService {
     this.socket?.on('user_presence_change', callback);
   }
 
+  markRead(conversationId: string) {
+    this.socket?.emit('mark_read', { conversationId });
+  }
+
+  onMessagesDelivered(callback: (data: { messages: { messageId: string; conversationId: string }[]; status: string }) => void) {
+    this.socket?.on('messages_delivered', callback);
+  }
+
+  offMessagesDelivered() {
+    this.socket?.off('messages_delivered');
+  }
+
+  onMessagesRead(callback: (data: { conversationId: string; readerId: string; status: string }) => void) {
+    this.socket?.on('messages_read', callback);
+  }
+
+  offMessagesRead() {
+    this.socket?.off('messages_read');
+  }
+
   // ===============================================
   // WebRTC Call Signaling Methods
   // ===============================================

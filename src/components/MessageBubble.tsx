@@ -68,13 +68,26 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     switch (message.status) {
       case 'sending':
         return <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-400 inline" />;
-      case 'sent':
-        return <Check className="w-3.5 h-3.5 text-zinc-400 inline" />;
       case 'delivered':
-        return <CheckCheck className="w-3.5 h-3.5 text-zinc-400 inline" />;
+        return (
+          <span title="Delivered">
+            <CheckCheck className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-400 inline" />
+          </span>
+        );
       case 'read':
+      case 'seen':
+        return (
+          <span title="Read">
+            <CheckCheck className="w-3.5 h-3.5 text-[#53bdeb] inline" />
+          </span>
+        );
+      case 'sent':
       default:
-        return <CheckCheck className="w-3.5 h-3.5 text-sky-400 inline" />;
+        return (
+          <span title="Sent">
+            <Check className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-400 inline" />
+          </span>
+        );
     }
   };
 

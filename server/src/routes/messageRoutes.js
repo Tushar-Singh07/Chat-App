@@ -4,6 +4,7 @@ import {
   sendMessage,
   deleteMessage,
   reactToMessage,
+  markConversationAsRead,
 } from '../controllers/messageController.js';
 import { authenticateUser } from '../middleware/authMiddleware.js';
 
@@ -13,6 +14,7 @@ router.use(authenticateUser);
 
 router.get('/:conversationId', getMessages);
 router.post('/', sendMessage);
+router.put('/read/:conversationId', markConversationAsRead);
 router.delete('/:id', deleteMessage);
 router.post('/:id/react', reactToMessage);
 

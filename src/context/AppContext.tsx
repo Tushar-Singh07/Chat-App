@@ -6,6 +6,7 @@ import { userService } from '../services/userService';
 import { chatService } from '../services/chatService';
 import { socketService } from '../services/socketService';
 import { WebRTCService } from '../services/webrtcService';
+import { formatLastSeen } from '../utils/formatters';
 
 export interface IncomingCallData {
   callId: string;
@@ -351,7 +352,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           bio: u.about || 'Hey there! I am using WhatsApp.',
           phone: u.phone || '',
           presence: u.isOnline ? 'online' : 'offline',
-          lastSeen: u.isOnline ? 'Online' : new Date(u.lastSeen || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          lastSeen: formatLastSeen(u.lastSeen, Boolean(u.isOnline)),
         }));
         setUsers(mappedUsers);
       }
@@ -404,9 +405,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setConversations((prev) =>
         prev.map((c) =>
           c.id === norm.conversationId
-            ? { ...c, lastMessage: norm, updatedAt: new Date().toISOString() }
+            ? {
+                ...c,
+                lastMessage: norm,
+                updatedAt: new Date().toISOString(),
+                unreadCount: activeConversationId === norm.conversationId ? 0 : (c.unreadCount || 0) + 1,
+              }
             : c
         )
+      );
+
+      // If receiver currently has this conversation open, acknowledge as read immediately
+      if (activeConversationId === norm.conversationId) {
+        socketService.markRead(norm.conversationId);
+        chatService.markMessagesAsRead(norm.conversationId).catch(() => {});
+      }
+    });
+
+    // Real-Time Delivery Receipt Listener (Turn 1 tick into 2 ticks)
+    socketService.onMessagesDelivered((data) => {
+      if (!data?.messages || data.messages.length === 0) return;
+      const deliveredIds = new Set(data.messages.map((m) => m.messageId));
+
+      setMessages((prev) => {
+        const updated = { ...prev };
+        for (const item of data.messages) {
+          if (updated[item.conversationId]) {
+            updated[item.conversationId] = updated[item.conversationId].map((m) =>
+              deliveredIds.has(m.id) && m.status === 'sent' ? { ...m, status: 'delivered' } : m
+            );
+          }
+        }
+        return updated;
+      });
+
+      setConversations((prev) =>
+        prev.map((c) => {
+          const match = data.messages.find((m) => m.conversationId === c.id);
+          if (match && c.lastMessage && deliveredIds.has(c.lastMessage.id) && c.lastMessage.status === 'sent') {
+            return {
+              ...c,
+              lastMessage: { ...c.lastMessage, status: 'delivered' },
+            };
+          }
+          return c;
+        })
+      );
+    });
+
+    // Real-Time Read Receipt Listener (Turn 2 gray ticks into 2 blue ticks)
+    socketService.onMessagesRead((data) => {
+      if (!data?.conversationId) return;
+
+      setMessages((prev) => {
+        if (!prev[data.conversationId]) return prev;
+        return {
+          ...prev,
+          [data.conversationId]: prev[data.conversationId].map((m) =>
+            m.senderId === currentUser.id && m.status !== 'read' ? { ...m, status: 'read' } : m
+          ),
+        };
+      });
+
+      setConversations((prev) =>
+        prev.map((c) => {
+          if (c.id === data.conversationId && c.lastMessage && c.lastMessage.senderId === currentUser.id) {
+            return {
+              ...c,
+              lastMessage: { ...c.lastMessage, status: 'read' },
+            };
+          }
+          return c;
+        })
       );
     });
 
@@ -419,15 +489,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     socketService.onPresenceChange(({ userId, isOnline, lastSeen }) => {
+      const formatted = formatLastSeen(lastSeen, isOnline);
       setUserPresences((prev) => ({
         ...prev,
         [userId]: {
           status: isOnline ? 'online' : 'offline',
-          lastSeen: isOnline ? 'Online' : `Last seen ${lastSeen}`,
+          lastSeen: formatted,
         },
       }));
       setUsers((prev) =>
-        prev.map((u) => (u.id === userId ? { ...u, presence: isOnline ? 'online' : 'offline' } : u))
+        prev.map((u) =>
+          u.id === userId
+            ? { ...u, presence: isOnline ? 'online' : 'offline', lastSeen: formatted }
+            : u
+        )
       );
     });
 
@@ -577,12 +652,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (userPresences[userId]) return userPresences[userId];
       const u = users.find((x) => x.id === userId);
       if (u) {
+        const isOnline = u.presence === 'online';
         return {
-          status: u.presence === 'online' ? 'online' : 'offline',
-          lastSeen: u.lastSeen || (u.presence === 'online' ? 'Online' : 'Offline'),
+          status: isOnline ? 'online' : 'offline',
+          lastSeen: formatLastSeen(u.lastSeen, isOnline),
         };
       }
-      return { status: 'offline', lastSeen: 'Offline' };
+      return { status: 'offline', lastSeen: 'offline' };
     },
     [userPresences, users]
   );
@@ -1008,8 +1084,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await chatService.deleteConversation(id);
   }, [activeConversationId]);
 
-  const markAsRead = useCallback((id: string) => {
+  const markAsRead = useCallback(async (id: string) => {
+    if (!id) return;
     setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
+    socketService.markRead(id);
+    try {
+      await chatService.markMessagesAsRead(id);
+    } catch (err) {
+      // Ignore background receipt failure
+    }
   }, []);
 
   const markAllAsRead = useCallback(() => {
