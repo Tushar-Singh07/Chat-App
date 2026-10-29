@@ -53,8 +53,36 @@ export const apiFetch = async <T = any>(
   };
 
   try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-    const data = await response.json();
+    const url = `${API_BASE_URL}${endpoint}`;
+    const response = await fetch(url, config);
+
+    const contentType = response.headers.get('content-type') || '';
+    let data: any = {};
+
+    if (contentType.includes('application/json')) {
+      data = await response.json();
+    } else {
+      const text = await response.text();
+      if (
+        response.status === 405 ||
+        (!import.meta.env.VITE_API_URL && typeof window !== 'undefined' && window.location.hostname !== 'localhost')
+      ) {
+        return {
+          success: false,
+          message: 'Backend server is not connected. Please configure VITE_API_URL in your Vercel Project Settings pointing to your Render backend URL.',
+        };
+      }
+      if (response.status === 502 || response.status === 503) {
+        return {
+          success: false,
+          message: 'Backend server is waking up from standby. Please wait 15 seconds and try again.',
+        };
+      }
+      return {
+        success: false,
+        message: text || `HTTP error! Status: ${response.status}`,
+      };
+    }
 
     if (!response.ok) {
       return {
@@ -69,6 +97,12 @@ export const apiFetch = async <T = any>(
     return data;
   } catch (err: any) {
     console.error('API Fetch error:', err);
+    if (!import.meta.env.VITE_API_URL && typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+      return {
+        success: false,
+        message: 'Backend server is not connected. Please configure VITE_API_URL in your Vercel Project Settings pointing to your Render backend URL.',
+      };
+    }
     return {
       success: false,
       message: err.message || 'Network error or backend unavailable',
