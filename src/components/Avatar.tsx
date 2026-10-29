@@ -6,7 +6,7 @@ import { getInitials, getPresenceBadgeColor } from '../utils/formatters';
 interface AvatarProps {
   src?: string;
   alt: string;
-  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   presence?: Presence;
   showPresence?: boolean;
   hasUnreadStatus?: boolean;
@@ -20,6 +20,7 @@ const sizeClasses = {
   md: 'w-10 h-10 text-sm',
   lg: 'w-12 h-12 text-base',
   xl: 'w-16 h-16 text-xl',
+  '2xl': 'w-32 h-32 text-4xl font-bold',
 };
 
 const presenceSizeClasses = {
@@ -28,6 +29,12 @@ const presenceSizeClasses = {
   md: 'w-3 h-3 border-2',
   lg: 'w-3.5 h-3.5 border-2',
   xl: 'w-4 h-4 border-2',
+  '2xl': 'w-6 h-6 border-4',
+};
+
+const isDemoAvatar = (url?: string) => {
+  if (!url) return true;
+  return url.includes('images.unsplash.com/photo-1534528741775-53994a69daeb');
 };
 
 export const Avatar: React.FC<AvatarProps> = ({
@@ -58,7 +65,7 @@ export const Avatar: React.FC<AvatarProps> = ({
           hasUnreadStatus && 'ring-2 ring-emerald-500 ring-offset-2 ring-offset-white dark:ring-offset-[#111b21]'
         )}
       >
-        {src && !imageError ? (
+        {src && !imageError && !isDemoAvatar(src) ? (
           <img
             src={src}
             alt={alt}

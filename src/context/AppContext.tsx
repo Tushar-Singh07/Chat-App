@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { User, Conversation, Message, Status, Call, ActiveTab, MediaAttachment, UserPresence } from '../types';
-import { useAuth } from './AuthContext';
+import { useAuth, sanitizeAvatar } from './AuthContext';
 import { useToast } from './ToastContext';
 import { userService } from '../services/userService';
 import { chatService } from '../services/chatService';
@@ -106,7 +106,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     id: '',
     name: 'Guest',
     email: '',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+    avatar: '',
     bio: 'Hey there! I am using WhatsApp.',
     phone: '',
     presence: 'offline',
@@ -169,7 +169,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         id: p.id || p._id || p,
         name: p.name || 'User',
         email: p.email || '',
-        avatar: p.profilePicture || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+        avatar: sanitizeAvatar(p.profilePicture || p.avatar),
         bio: p.about || 'Hey there! I am using WhatsApp.',
         phone: p.phone || '',
         presence: (p.isOnline ? 'online' : 'offline') as any,
@@ -251,7 +251,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         id,
         name: 'User',
         email: '',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+        avatar: '',
         bio: 'WhatsApp user',
         phone: '',
         presence: 'offline',
@@ -326,7 +326,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           id: u.id || u._id,
           name: u.name,
           email: u.email || '',
-          avatar: u.profilePicture || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+          avatar: sanitizeAvatar(u.profilePicture || u.avatar),
           bio: u.about || 'Hey there! I am using WhatsApp.',
           phone: u.phone || '',
           presence: u.isOnline ? 'online' : 'offline',
@@ -422,7 +422,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         id: data.caller?.id || data.callerId,
         name: data.caller?.name || 'Unknown User',
         email: data.caller?.email || '',
-        avatar: data.caller?.avatar || (data.caller as any)?.profilePicture || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+        avatar: sanitizeAvatar(data.caller?.avatar || (data.caller as any)?.profilePicture),
         bio: data.caller?.bio || 'Hey there!',
         phone: data.caller?.phone || '',
         presence: 'online',

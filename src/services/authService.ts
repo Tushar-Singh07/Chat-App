@@ -24,10 +24,15 @@ export const authService = {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+    // Do not set token: registration requires manual login & verification
+    return res;
+  },
 
-    if (res.success && res.data?.token) {
-      setToken(res.data.token);
-    }
+  async validateCredentials(payload: LoginPayload) {
+    const res = await apiFetch<{ email: string; name?: string }>('/auth/validate-credentials', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
     return res;
   },
 
@@ -44,7 +49,7 @@ export const authService = {
   },
 
   async sendVerificationCode(email: string) {
-    const res = await apiFetch<{ message: string; code?: string }>('/auth/send-code', {
+    const res = await apiFetch<{ message: string }>('/auth/send-code', {
       method: 'POST',
       body: JSON.stringify({ email }),
     });

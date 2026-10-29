@@ -5,7 +5,7 @@ import { useToast } from '../context/ToastContext';
 import { MessageSquare, User as UserIcon, Mail, Phone, Lock, Eye, EyeOff, ArrowRight, ShieldCheck } from 'lucide-react';
 
 export const RegisterPage: React.FC = () => {
-  const { register, login } = useAuth();
+  const { register } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
 
@@ -40,15 +40,19 @@ export const RegisterPage: React.FC = () => {
     setSubmitting(true);
     const result = await register({
       name,
-      email,
+      email: email.trim().toLowerCase(),
       phone: phone.trim() || undefined,
       password,
     });
     setSubmitting(false);
 
     if (result.success) {
-      addToast('Account created successfully! Welcome to WhatsApp.', 'success');
-      navigate('/');
+      addToast({
+        type: 'success',
+        title: 'Account Created Successfully!',
+        description: `We've sent a 6-digit verification code to ${email}.`,
+      });
+      navigate('/verify-email', { state: { email: email.trim().toLowerCase(), fromRegister: true } });
     } else {
       setFormError(result.message || 'Registration failed');
     }
@@ -69,28 +73,6 @@ export const RegisterPage: React.FC = () => {
           </div>
           <h1 className="text-3xl font-bold text-slate-50 tracking-tight">Create Account</h1>
           <p className="text-slate-400 text-sm mt-1">Join WhatsApp Web to start chatting</p>
-        </div>
-
-        {/* Quick Login Shortcut for Tushar Singh Rajput */}
-        <div className="mb-4">
-          <button
-            type="button"
-            onClick={async () => {
-              setSubmitting(true);
-              const result = await login({ email: 'tusharsinghrajput06@gmail.com', password: '123456789' });
-              setSubmitting(false);
-              if (result.success) {
-                addToast({ type: 'success', title: 'Logged in as Tushar Singh Rajput!' });
-                navigate('/');
-              } else {
-                navigate('/login');
-              }
-            }}
-            disabled={submitting}
-            className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold rounded-2xl transition shadow-xl shadow-emerald-600/30 active:scale-[0.99] flex items-center justify-center gap-2 border border-emerald-400/30 text-sm"
-          >
-            <span>⚡ Sign In as Tushar (tusharsinghrajput06@gmail.com)</span>
-          </button>
         </div>
 
         {/* Auth Card */}

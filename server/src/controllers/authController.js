@@ -1,6 +1,7 @@
 import {
   registerUser,
   loginUser,
+  validateUserCredentials,
   logoutUser,
   getUserProfile,
   requestVerificationCode,
@@ -12,14 +13,33 @@ export const register = async (req, res, next) => {
   try {
     const { name, email, phone, password } = req.body;
     const user = await registerUser({ name, email, phone, password });
-    const token = generateToken(res, user._id);
 
     res.status(201).json({
       success: true,
-      message: 'User registered successfully',
+      requiresVerification: true,
+      message: 'Account created successfully! We sent a 6-digit verification code to your email.',
       data: {
-        user,
-        token,
+        email: user.email,
+        name: user.name,
+      },
+    });
+  } catch (error) {
+    res.status(error.statusCode || 500);
+    next(error);
+  }
+};
+
+export const validateCredentials = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+    const user = await validateUserCredentials({ email, password });
+
+    res.status(200).json({
+      success: true,
+      message: 'Credentials verified successfully',
+      data: {
+        email: user.email,
+        name: user.name,
       },
     });
   } catch (error) {
@@ -43,6 +63,14 @@ export const login = async (req, res, next) => {
       },
     });
   } catch (error) {
+    if (error.requiresVerification) {
+      return res.status(403).json({
+        success: false,
+        requiresVerification: true,
+        email: error.email,
+        message: error.message,
+      });
+    }
     res.status(error.statusCode || 500);
     next(error);
   }
@@ -59,10 +87,6 @@ export const sendCode = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: result.message,
-      code: result.code,
-      data: {
-        code: result.code,
-      },
     });
   } catch (error) {
     res.status(error.statusCode || 500);

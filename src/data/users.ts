@@ -1,12 +1,12 @@
 import type { User } from '../types';
 
-export const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80';
+export const DEFAULT_AVATAR = '';
 
 export const CURRENT_USER: User = {
   id: '',
   name: '',
   email: '',
-  avatar: DEFAULT_AVATAR,
+  avatar: '',
   bio: 'Hey there! I am using WhatsApp.',
   phone: '',
   presence: 'offline',

@@ -1,9 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   User,
   Phone,
   Camera,
-  Shield,
   Check,
   Edit2,
   Image as ImageIcon,
@@ -11,12 +10,56 @@ import {
   FileText,
   ExternalLink,
   Download,
+  Trash2,
+  Loader2,
+  Upload,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { Avatar } from '../components/Avatar';
 import { Button } from '../components/Button';
 import { useToast } from '../context/ToastContext';
 import { cn } from '../utils/cn';
+
+// Helper to quickly resize and compress images in-browser to max 500x500 (~40-60KB)
+const resizeImage = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDimension = 500;
+        let width = img.width;
+        let height = img.height;
+        if (width > height) {
+          if (width > maxDimension) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          }
+        } else {
+          if (height > maxDimension) {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(e.target?.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.88));
+      };
+      img.onerror = reject;
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
 
 // Mock shared media items
 const MOCK_MEDIA = [
@@ -41,36 +84,123 @@ const MOCK_DOCS = [
 ];
 
 export const ProfilePage: React.FC = () => {
-  const { currentUser, getUserPresence } = useApp();
+  const { getUserPresence } = useApp();
+  const { currentUser: authUser, updateProfile } = useAuth();
   const { addToast } = useToast();
 
-  const [name, setName] = useState(currentUser.name);
-  const [bio, setBio] = useState(currentUser.bio);
-  const [avatarUrl, setAvatarUrl] = useState(currentUser.avatar);
+  const currentUser = authUser || {
+    id: '',
+    name: 'User',
+    email: '',
+    avatar: '',
+    bio: 'Hey there! I am using WhatsApp.',
+    phone: '',
+    presence: 'online',
+  };
+
+  const [name, setName] = useState(currentUser.name || '');
+  const [bio, setBio] = useState(currentUser.bio || '');
+  const [avatarUrl, setAvatarUrl] = useState(currentUser.avatar || '');
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingBio, setIsEditingBio] = useState(false);
+  const [updatingAvatar, setUpdatingAvatar] = useState(false);
   const [activeMediaTab, setActiveMediaTab] = useState<'media' | 'links' | 'docs'>('media');
 
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const myPresence = getUserPresence(currentUser.id);
 
-  const handleSaveName = () => {
+  // Sync state if currentUser changes
+  useEffect(() => {
+    if (currentUser) {
+      setName(currentUser.name || '');
+      setBio(currentUser.bio || '');
+      setAvatarUrl(currentUser.avatar || '');
+    }
+  }, [currentUser]);
+
+  const handleSaveName = async () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      addToast({ type: 'error', title: 'Name Required', description: 'Display name cannot be empty.' });
+      return;
+    }
     setIsEditingName(false);
-    addToast({ type: 'success', title: 'Profile Updated', description: 'Your display name has been saved.' });
+    const result = await updateProfile({ name: trimmed });
+    if (result.success) {
+      addToast({ type: 'success', title: 'Profile Updated', description: 'Your display name has been saved.' });
+    } else {
+      addToast({ type: 'error', title: 'Update Failed', description: result.message || 'Could not save display name.' });
+    }
   };
 
-  const handleSaveBio = () => {
+  const handleSaveBio = async () => {
     setIsEditingBio(false);
-    addToast({ type: 'success', title: 'About Section Updated', description: 'Your bio has been saved.' });
+    const result = await updateProfile({ about: bio.trim() });
+    if (result.success) {
+      addToast({ type: 'success', title: 'About Section Updated', description: 'Your bio has been saved.' });
+    } else {
+      addToast({ type: 'error', title: 'Update Failed', description: result.message || 'Could not save bio.' });
+    }
   };
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const newUrl = URL.createObjectURL(file);
-    setAvatarUrl(newUrl);
-    addToast({ type: 'success', title: 'Profile Picture Updated', description: 'Your avatar preview has been updated.' });
+    if (!file.type.startsWith('image/')) {
+      addToast({ type: 'error', title: 'Invalid File', description: 'Please select an image file (JPG, PNG, WebP).' });
+      return;
+    }
+
+    try {
+      setUpdatingAvatar(true);
+      // Fast client-side image compression & resize
+      const compressedDataUrl = await resizeImage(file);
+      // Optimistic instant preview
+      setAvatarUrl(compressedDataUrl);
+
+      // Persist to backend database
+      const result = await updateProfile({ profilePicture: compressedDataUrl });
+      if (result.success) {
+        addToast({
+          type: 'success',
+          title: 'Profile Picture Updated!',
+          description: 'Your new DP has been updated and saved.',
+        });
+      } else {
+        addToast({
+          type: 'error',
+          title: 'Update Failed',
+          description: result.message || 'Could not save profile picture to server.',
+        });
+      }
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'Error', description: 'Failed to process selected image file.' });
+    } finally {
+      setUpdatingAvatar(false);
+      if (avatarInputRef.current) {
+        avatarInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    try {
+      setUpdatingAvatar(true);
+      setAvatarUrl('');
+      const result = await updateProfile({ profilePicture: '' });
+      if (result.success) {
+        addToast({
+          type: 'success',
+          title: 'Photo Removed',
+          description: 'Your display picture has been removed and reverted to initials.',
+        });
+      }
+    } catch (err) {
+      addToast({ type: 'error', title: 'Error', description: 'Failed to remove display picture.' });
+    } finally {
+      setUpdatingAvatar(false);
+    }
   };
 
   return (
@@ -88,7 +218,7 @@ export const ProfilePage: React.FC = () => {
       <div className="px-6 py-4 bg-zinc-100 dark:bg-[#202c33] border-b border-zinc-200 dark:border-[#222d34]">
         <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
           <User className="w-5 h-5 text-emerald-500" />
-          User Profile
+          Profile Settings
         </h1>
       </div>
 
@@ -97,27 +227,63 @@ export const ProfilePage: React.FC = () => {
         <div className="flex flex-col items-center justify-center p-6 bg-white dark:bg-[#111b21] rounded-3xl border border-zinc-200 dark:border-[#222d34] shadow-sm">
           <div
             className="relative group cursor-pointer"
-            onClick={() => avatarInputRef.current?.click()}
-            title="Click to change profile picture"
+            onClick={() => !updatingAvatar && avatarInputRef.current?.click()}
+            title="Click to change profile picture from files or gallery"
           >
             <Avatar
               src={avatarUrl}
-              alt={name}
-              size="xl"
+              alt={name || 'User'}
+              size="2xl"
               presence={myPresence.status === 'online' ? 'online' : 'offline'}
               showPresence
-              className="w-32 h-32 border-4 border-emerald-500/20 shadow-xl"
+              className="border-4 border-emerald-500/20 shadow-xl"
             />
-            <div className="absolute inset-0 rounded-full bg-black/50 flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-xs">
-              <Camera className="w-7 h-7 mb-1" />
-              <span className="text-[10px] font-semibold uppercase tracking-wider">Change</span>
+            <div className="absolute inset-0 rounded-full bg-black/60 flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-xs">
+              {updatingAvatar ? (
+                <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
+              ) : (
+                <>
+                  <Camera className="w-7 h-7 mb-1 text-emerald-400" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider">Change DP</span>
+                </>
+              )}
             </div>
           </div>
 
-          <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 mt-4">{name}</h2>
+          <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 mt-4">{name || 'Your Name'}</h2>
           <span className="text-xs px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 font-semibold mt-1">
             {myPresence.status === 'online' ? 'ONLINE' : myPresence.lastSeen || 'OFFLINE'}
           </span>
+
+          {/* Quick Actions for Avatar */}
+          <div className="flex items-center gap-2 mt-4">
+            <button
+              type="button"
+              disabled={updatingAvatar}
+              onClick={() => avatarInputRef.current?.click()}
+              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition shadow-sm flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+            >
+              {updatingAvatar ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Upload className="w-3.5 h-3.5" />
+              )}
+              <span>Choose from File / Gallery</span>
+            </button>
+
+            {avatarUrl && (
+              <button
+                type="button"
+                disabled={updatingAvatar}
+                onClick={handleRemoveAvatar}
+                className="px-3 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-[#202c33] dark:hover:bg-[#2a3942] text-rose-500 dark:text-rose-400 font-medium text-xs transition flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                title="Remove current photo"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Remove</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Profile Info Form Cards */}
@@ -143,7 +309,7 @@ export const ProfilePage: React.FC = () => {
                 </div>
               ) : (
                 <>
-                  <p className="text-base text-zinc-900 dark:text-zinc-100 font-medium">{name}</p>
+                  <p className="text-base text-zinc-900 dark:text-zinc-100 font-medium">{name || 'Add your name'}</p>
                   <button
                     onClick={() => setIsEditingName(true)}
                     className="p-2 text-zinc-400 hover:text-emerald-500 transition-colors rounded-full hover:bg-zinc-100 dark:hover:bg-[#202c33]"
@@ -155,7 +321,7 @@ export const ProfilePage: React.FC = () => {
               )}
             </div>
             <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              This is not your username or PIN. This name will be visible to your contacts.
+              This name will be visible to your contacts across WhatsApp Web.
             </p>
           </div>
 
@@ -182,7 +348,7 @@ export const ProfilePage: React.FC = () => {
                 </div>
               ) : (
                 <>
-                  <p className="text-sm text-zinc-800 dark:text-zinc-200">{bio}</p>
+                  <p className="text-sm text-zinc-800 dark:text-zinc-200">{bio || 'Hey there! I am using WhatsApp.'}</p>
                   <button
                     onClick={() => setIsEditingBio(true)}
                     className="p-2 text-zinc-400 hover:text-emerald-500 transition-colors rounded-full hover:bg-zinc-100 dark:hover:bg-[#202c33]"
@@ -197,16 +363,25 @@ export const ProfilePage: React.FC = () => {
 
           <div className="border-t border-zinc-100 dark:border-[#222d34]" />
 
-          {/* Phone Number */}
+          {/* Email / Phone */}
           <div className="space-y-1">
             <label className="text-xs font-semibold text-emerald-600 dark:text-[#00a884] uppercase tracking-wider">
-              Phone Number
+              Account Email
             </label>
-            <div className="flex items-center gap-3 text-zinc-900 dark:text-zinc-100">
-              <Phone className="w-4 h-4 text-zinc-400" />
-              <span className="text-sm font-medium font-mono">{currentUser.phone}</span>
-            </div>
+            <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{currentUser.email || 'Not provided'}</p>
           </div>
+
+          {currentUser.phone && (
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-emerald-600 dark:text-[#00a884] uppercase tracking-wider">
+                Phone Number
+              </label>
+              <div className="flex items-center gap-3 text-zinc-900 dark:text-zinc-100">
+                <Phone className="w-4 h-4 text-zinc-400" />
+                <span className="text-sm font-medium font-mono">{currentUser.phone}</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ----------------- MEDIA, LINKS, AND DOCUMENTS TABS ----------------- */}
@@ -256,79 +431,81 @@ export const ProfilePage: React.FC = () => {
             </div>
           </div>
 
-          {/* Media Grid Tab */}
+          {/* Tab 1: Media Grid */}
           {activeMediaTab === 'media' && (
-            <div className="grid grid-cols-3 sm:grid-cols-3 gap-2.5 pt-2">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
               {MOCK_MEDIA.map((item) => (
                 <div
                   key={item.id}
-                  onClick={() => addToast({ type: 'info', title: `Viewing ${item.title}` })}
-                  className="group relative aspect-square rounded-2xl overflow-hidden cursor-pointer bg-zinc-100 dark:bg-[#202c33] border border-zinc-200 dark:border-[#222d34]"
+                  className="group relative aspect-square rounded-xl overflow-hidden bg-zinc-200 dark:bg-[#202c33] cursor-pointer"
                 >
-                  <img src={item.url} alt={item.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2">
-                    <span className="text-[10px] text-white font-medium truncate">{item.title}</span>
+                  <img
+                    src={item.url}
+                    alt={item.title}
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                  />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <Download className="w-5 h-5 text-white" />
                   </div>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Links List Tab */}
+          {/* Tab 2: Shared Links */}
           {activeMediaTab === 'links' && (
-            <div className="space-y-2 pt-2">
+            <div className="space-y-2">
               {MOCK_LINKS.map((link) => (
                 <a
                   key={link.id}
                   href={link.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-[#202c33] hover:bg-zinc-100 dark:hover:bg-[#2a3942] transition-colors border border-zinc-200 dark:border-[#222d34]"
+                  className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-[#202c33]/50 hover:bg-zinc-100 dark:hover:bg-[#202c33] border border-zinc-200/60 dark:border-white/5 transition-all group"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500 flex-shrink-0">
+                    <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
                       <LinkIcon className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
-                      <h4 className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 truncate">{link.title}</h4>
-                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{link.domain} • {link.date}</p>
+                      <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate group-hover:text-emerald-500 transition-colors">
+                        {link.title}
+                      </p>
+                      <p className="text-xs text-zinc-400 truncate">{link.domain} • {link.date}</p>
                     </div>
                   </div>
-                  <ExternalLink className="w-4 h-4 text-zinc-400 flex-shrink-0 ml-2" />
+                  <ExternalLink className="w-4 h-4 text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-200 transition-colors shrink-0 ml-2" />
                 </a>
               ))}
             </div>
           )}
 
-          {/* Documents Tab */}
+          {/* Tab 3: Shared Documents */}
           {activeMediaTab === 'docs' && (
-            <div className="space-y-2 pt-2">
+            <div className="space-y-2">
               {MOCK_DOCS.map((doc) => (
                 <div
                   key={doc.id}
-                  onClick={() => addToast({ type: 'success', title: `Downloading ${doc.fileName}` })}
-                  className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-[#202c33] hover:bg-zinc-100 dark:hover:bg-[#2a3942] transition-colors border border-zinc-200 dark:border-[#222d34] cursor-pointer"
+                  className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-[#202c33]/50 hover:bg-zinc-100 dark:hover:bg-[#202c33] border border-zinc-200/60 dark:border-white/5 transition-all group cursor-pointer"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-500 flex-shrink-0 font-bold text-[10px] uppercase">
-                      {doc.type}
+                    <div className="w-9 h-9 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-500 shrink-0">
+                      <FileText className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
-                      <h4 className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 truncate">{doc.fileName}</h4>
-                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{doc.size} • {doc.date}</p>
+                      <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+                        {doc.fileName}
+                      </p>
+                      <p className="text-xs text-zinc-400">{doc.size} • {doc.date}</p>
                     </div>
                   </div>
-                  <Download className="w-4 h-4 text-zinc-400 flex-shrink-0 ml-2" />
+                  <button className="p-2 text-zinc-400 hover:text-emerald-500 transition-colors rounded-lg">
+                    <Download className="w-4 h-4" />
+                  </button>
                 </div>
               ))}
             </div>
           )}
-        </div>
-
-        {/* Security badge note */}
-        <div className="p-4 rounded-2xl bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-3">
-          <Shield className="w-5 h-5 flex-shrink-0" />
-          <span>Your profile information is shared securely with your active one-to-one connections.</span>
         </div>
       </div>
     </div>

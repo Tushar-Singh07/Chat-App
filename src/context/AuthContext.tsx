@@ -1,18 +1,28 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { User } from '../types';
 import { authService } from '../services/authService';
+import { userService } from '../services/userService';
 import type { LoginPayload, RegisterPayload } from '../services/authService';
 import { getToken, setToken } from '../services/api';
+
+export const sanitizeAvatar = (url?: string) => {
+  if (!url || url.includes('images.unsplash.com/photo-1534528741775-53994a69daeb')) {
+    return '';
+  }
+  return url;
+};
 
 interface AuthContextType {
   currentUser: User | null;
   isAuthenticated: boolean;
   loading: boolean;
   error: string | null;
-  login: (payload: LoginPayload) => Promise<{ success: boolean; message?: string }>;
-  sendVerificationCode: (email: string) => Promise<{ success: boolean; message?: string; code?: string }>;
+  login: (payload: LoginPayload) => Promise<{ success: boolean; message?: string; requiresVerification?: boolean; email?: string }>;
+  validateCredentials: (payload: LoginPayload) => Promise<{ success: boolean; message?: string }>;
+  sendVerificationCode: (email: string) => Promise<{ success: boolean; message?: string }>;
   verifyCodeLogin: (email: string, code: string) => Promise<{ success: boolean; message?: string }>;
-  register: (payload: RegisterPayload) => Promise<{ success: boolean; message?: string }>;
+  register: (payload: RegisterPayload) => Promise<{ success: boolean; message?: string; requiresVerification?: boolean; email?: string }>;
+  updateProfile: (data: { name?: string; about?: string; profilePicture?: string; phone?: string }) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   clearError: () => void;
@@ -45,7 +55,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           id: u.id || u._id,
           name: u.name,
           email: u.email || '',
-          avatar: u.profilePicture || u.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+          avatar: sanitizeAvatar(u.profilePicture || u.avatar),
           bio: u.about || u.bio || 'Hey there! I am using WhatsApp.',
           phone: u.phone || '+91 98765 43210',
           presence: u.isOnline ? 'online' : 'offline',
@@ -82,7 +92,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           id: u.id || u._id,
           name: u.name,
           email: u.email || '',
-          avatar: u.profilePicture || u.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+          avatar: sanitizeAvatar(u.profilePicture || u.avatar),
           bio: u.about || u.bio || 'Hey there! I am using WhatsApp.',
           phone: u.phone || '+91 98765 43210',
           presence: 'online',
@@ -95,7 +105,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const msg = res.message || 'Login failed';
         setError(msg);
         setLoading(false);
-        return { success: false, message: msg };
+        return {
+          success: false,
+          message: msg,
+          requiresVerification: res.requiresVerification,
+          email: res.email,
+        };
       }
     } catch (err: any) {
       const msg = err.message || 'An unexpected error occurred during login';
@@ -105,12 +120,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const validateCredentials = async (payload: LoginPayload) => {
+    setError(null);
+    try {
+      const res = await authService.validateCredentials(payload);
+      if (res.success) {
+        return { success: true };
+      } else {
+        const msg = res.message || 'Invalid email or password';
+        setError(msg);
+        return { success: false, message: msg };
+      }
+    } catch (err: any) {
+      const msg = err.message || 'Failed to validate credentials';
+      setError(msg);
+      return { success: false, message: msg };
+    }
+  };
+
   const sendVerificationCode = async (email: string) => {
     setError(null);
     try {
       const res = await authService.sendVerificationCode(email);
       if (res.success) {
-        return { success: true, message: res.message, code: res.data?.code || (res as any).code };
+        return {
+          success: true,
+          message: res.message,
+        };
       } else {
         const msg = res.message || 'Failed to send verification code';
         setError(msg);
@@ -134,7 +170,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           id: u.id || u._id,
           name: u.name,
           email: u.email || '',
-          avatar: u.profilePicture || u.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+          avatar: sanitizeAvatar(u.profilePicture || u.avatar),
           bio: u.about || u.bio || 'Hey there! I am using WhatsApp.',
           phone: u.phone || '+91 98765 43210',
           presence: 'online',
@@ -162,25 +198,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       const res = await authService.register(payload);
-      if (res.success && res.data?.user) {
-        const u = res.data.user as any;
-        const normalizedUser: User = {
-          id: u.id || u._id,
-          name: u.name,
-          email: u.email || '',
-          avatar: u.profilePicture || u.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-          bio: u.about || u.bio || 'Hey there! I am using WhatsApp.',
-          phone: u.phone || '+91 98765 43210',
-          presence: 'online',
+      setLoading(false);
+      if (res.success) {
+        return {
+          success: true,
+          message: res.message || 'Account created successfully',
+          requiresVerification: res.requiresVerification,
+          email: payload.email,
         };
-        setCurrentUser(normalizedUser);
-        setIsAuthenticated(true);
-        setLoading(false);
-        return { success: true };
       } else {
         const msg = res.message || 'Registration failed';
         setError(msg);
-        setLoading(false);
         return { success: false, message: msg };
       }
     } catch (err: any) {
@@ -188,6 +216,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setError(msg);
       setLoading(false);
       return { success: false, message: msg };
+    }
+  };
+
+  const updateProfile = async (data: { name?: string; about?: string; profilePicture?: string; phone?: string }) => {
+    try {
+      const res = await userService.updateProfile(data);
+      if (res.success && res.data?.user) {
+        const u = res.data.user as any;
+        const normalizedUser: User = {
+          id: u.id || u._id,
+          name: u.name,
+          email: u.email || '',
+          avatar: sanitizeAvatar(u.profilePicture || u.avatar),
+          bio: u.about || u.bio || 'Hey there! I am using WhatsApp.',
+          phone: u.phone || '+91 98765 43210',
+          presence: 'online',
+        };
+        setCurrentUser(normalizedUser);
+        return { success: true };
+      }
+      return { success: false, message: 'Failed to update profile' };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Error updating profile' };
     }
   };
 
@@ -215,9 +266,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         error,
         login,
+        validateCredentials,
         sendVerificationCode,
         verifyCodeLogin,
         register,
+        updateProfile,
         logout,
         refreshUser,
         clearError,

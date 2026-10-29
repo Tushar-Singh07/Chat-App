@@ -847,7 +847,7 @@ export const ChatsPage: React.FC = () => {
             ) : (
               (newChatSearch.trim().length >= 2 ? searchResults : availableContacts).map((u: any) => {
                 const uId = u.id || u._id;
-                const avatarUrl = u.profilePicture || u.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80';
+                const avatarUrl = u.profilePicture || u.avatar || '';
                 const presence = u.isOnline ? 'online' : u.presence || 'offline';
                 return (
                   <div

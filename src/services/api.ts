@@ -13,6 +13,8 @@ export interface ApiResponse<T = any> {
   message?: string;
   data?: T;
   error?: string;
+  requiresVerification?: boolean;
+  email?: string;
 }
 
 export const getToken = (): string | null => {
@@ -56,6 +58,9 @@ export const apiFetch = async <T = any>(
       return {
         success: false,
         message: data.message || `HTTP error! Status: ${response.status}`,
+        requiresVerification: data.requiresVerification,
+        email: data.email,
+        data: data.data,
       };
     }
 

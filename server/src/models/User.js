@@ -34,7 +34,7 @@ const userSchema = new mongoose.Schema(
     },
     profilePicture: {
       type: String,
-      default: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+      default: '',
     },
     about: {
       type: String,
@@ -56,6 +56,10 @@ const userSchema = new mongoose.Schema(
     verificationCodeExpires: {
       type: Date,
       select: false,
+    },
+    isVerified: {
+      type: Boolean,
+      default: false,
     },
   },
   {

@@ -65,10 +65,10 @@ export const updateProfile = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    if (name) user.name = name;
-    if (about) user.about = about;
-    if (profilePicture) user.profilePicture = profilePicture;
-    if (phone) user.phone = phone;
+    if (name !== undefined) user.name = name;
+    if (about !== undefined) user.about = about;
+    if (profilePicture !== undefined) user.profilePicture = profilePicture;
+    if (phone !== undefined) user.phone = phone;
 
     await user.save();
 
