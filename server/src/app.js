@@ -8,13 +8,14 @@ import messageRoutes from './routes/messageRoutes.js';
 import statusRoutes from './routes/statusRoutes.js';
 import callRoutes from './routes/callRoutes.js';
 import { notFound, errorHandler } from './middleware/errorMiddleware.js';
+import { corsOriginValidator } from './config/corsConfig.js';
 
 const app = express();
 
-// CORS setup - Allow any origin dynamically (localhost, 127.0.0.1, LAN IP, etc.)
+// Production-ready CORS setup supporting Vercel and local development
 app.use(
   cors({
-    origin: (origin, callback) => callback(null, true),
+    origin: corsOriginValidator,
     credentials: true,
   })
 );
@@ -23,10 +24,27 @@ app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 app.use(cookieParser());
 
-// Health Check
+// Root and Health Check Endpoints (for Render, uptime probes, and monitors)
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'WhatsApp Web Clone API is active',
+    environment: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    success: true,
+    status: 'healthy',
+  });
+});
+
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     success: true,
+    status: 'healthy',
     message: 'Server is running',
   });
 });

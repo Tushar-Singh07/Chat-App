@@ -1,9 +1,11 @@
 const getApiBaseUrl = () => {
-  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
-  if (typeof window !== 'undefined') {
-    return '/api';
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl) {
+    const trimmed = envUrl.trim().replace(/\/+$/, '');
+    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
   }
-  return 'http://localhost:5000/api';
+  // Local development / Vite dev proxy fallback
+  return '/api';
 };
 
 const API_BASE_URL = getApiBaseUrl();
