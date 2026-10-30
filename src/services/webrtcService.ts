@@ -7,6 +7,16 @@ export const getIceServers = (): RTCConfiguration => {
     { urls: 'stun:stun4.l.google.com:19302' },
     { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:stun.services.mozilla.com' },
+    // Public OpenRelay TURN servers for reliable P2P NAT & mobile data bypass
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp',
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
   ];
 
   const turnUrl = import.meta.env.VITE_TURN_SERVER_URL;
@@ -44,17 +54,27 @@ export class WebRTCService {
         },
         video: isVideo
           ? {
-              width: { ideal: 1280, min: 640 },
-              height: { ideal: 720, min: 480 },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
               facingMode: 'user',
-              frameRate: { ideal: 30, min: 15 },
+              frameRate: { ideal: 30 },
             }
           : false,
       };
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      this.localStream = stream;
-      return stream;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        this.localStream = stream;
+        return stream;
+      } catch (firstErr: any) {
+        console.warn('[WebRTC] Ideal constraints failed, falling back to basic media constraints:', firstErr?.message);
+        const fallbackStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: isVideo ? true : false,
+        });
+        this.localStream = fallbackStream;
+        return fallbackStream;
+      }
     } catch (err: any) {
       console.error('[WebRTC] Error acquiring media stream:', err);
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
@@ -81,7 +101,14 @@ export class WebRTCService {
     // Send candidate to peer via signaling server
     pc.onicecandidate = (event) => {
       if (event.candidate && this.onIceCandidateCallback) {
-        this.onIceCandidateCallback(event.candidate);
+        const c = event.candidate;
+        const candidatePayload = c.toJSON ? c.toJSON() : {
+          candidate: c.candidate,
+          sdpMid: c.sdpMid,
+          sdpMLineIndex: c.sdpMLineIndex,
+          usernameFragment: c.usernameFragment,
+        };
+        this.onIceCandidateCallback(candidatePayload as RTCIceCandidate);
       }
     };
 
@@ -102,6 +129,14 @@ export class WebRTCService {
           }
         });
       }
+
+      // Track packets arriving (unmute)
+      event.track.onunmute = () => {
+        console.log('[WebRTC] Track unmuted and receiving packets:', event.track.kind);
+        if (this.onRemoteStreamCallback) {
+          this.onRemoteStreamCallback(new MediaStream(this.remoteStream.getTracks()));
+        }
+      };
 
       // Dispatch callback with a fresh MediaStream instance so React state detects reference change
       if (this.onRemoteStreamCallback) {

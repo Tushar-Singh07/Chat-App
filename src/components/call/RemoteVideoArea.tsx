@@ -30,7 +30,7 @@ export const RemoteVideoArea: React.FC<RemoteVideoAreaProps> = ({
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const [hasLiveVideoTrack, setHasLiveVideoTrack] = useState<boolean>(false);
 
-  // Helper to attach stream to video element and handle browser autoplay policy
+  // Helper to attach stream to video element with guaranteed autoplay
   const attachAndPlay = useCallback((videoEl: HTMLVideoElement | null, stream: MediaStream | null) => {
     if (!videoEl || !stream) return;
 
@@ -39,53 +39,45 @@ export const RemoteVideoArea: React.FC<RemoteVideoAreaProps> = ({
       videoEl.srcObject = stream;
     }
 
-    const checkTracks = () => {
-      const vTracks = stream.getVideoTracks();
-      const hasLive = vTracks.length > 0 && vTracks.some((t) => t.readyState === 'live');
-      setHasLiveVideoTrack(hasLive);
-    };
+    // Keep video element strictly muted to prevent browser autoplay blocks (audio is handled by dedicated <audio>)
+    videoEl.muted = true;
 
-    checkTracks();
-
-    const playPromise = videoEl.play();
-    if (playPromise !== undefined) {
-      playPromise
-        .then(() => {
-          checkTracks();
-        })
-        .catch((err) => {
-          console.warn('[RemoteVideoArea] Direct play() blocked, attempting muted fallback:', err.message);
-          videoEl.muted = true;
-          videoEl
-            .play()
-            .then(() => {
-              // Unmute once playback starts
-              videoEl.muted = false;
-              checkTracks();
-            })
-            .catch((e) => console.error('[RemoteVideoArea] Muted play also failed:', e));
-        });
+    const vTracks = stream.getVideoTracks();
+    if (vTracks.length > 0) {
+      setHasLiveVideoTrack(true);
     }
+
+    videoEl.play().catch((err) => {
+      console.warn('[RemoteVideoArea] Video play error (retrying):', err.message);
+      videoEl.muted = true;
+      videoEl.play().catch((e) => console.error('[RemoteVideoArea] Play retry failed:', e));
+    });
   }, []);
 
   // Monitor remoteStream changes and dynamically added tracks
   useEffect(() => {
     const videoEl = remoteVideoRef?.current || internalVideoRef.current;
-    attachAndPlay(videoEl, remoteStream || null);
-
-    // Also attach to dedicated audio element for guaranteed sound
-    if (remoteAudioRef.current && remoteStream) {
-      if (remoteAudioRef.current.srcObject !== remoteStream) {
-        remoteAudioRef.current.srcObject = remoteStream;
-      }
-      remoteAudioRef.current.play().catch((err) => console.warn('[RemoteVideoArea] Audio play error:', err));
-    }
-
     if (remoteStream) {
+      attachAndPlay(videoEl, remoteStream);
+
+      const vTracks = remoteStream.getVideoTracks();
+      if (vTracks.length > 0) {
+        setHasLiveVideoTrack(true);
+      }
+
+      // Dedicated audio element plays remote voice
+      if (remoteAudioRef.current) {
+        if (remoteAudioRef.current.srcObject !== remoteStream) {
+          remoteAudioRef.current.srcObject = remoteStream;
+        }
+        remoteAudioRef.current.play().catch((err) => console.warn('[RemoteVideoArea] Audio play notice:', err));
+      }
+
       const handleTrackChange = () => {
-        const vTracks = remoteStream.getVideoTracks();
-        const hasLive = vTracks.length > 0 && vTracks.some((t) => t.readyState === 'live');
-        setHasLiveVideoTrack(hasLive);
+        const currentVTracks = remoteStream.getVideoTracks();
+        if (currentVTracks.length > 0) {
+          setHasLiveVideoTrack(true);
+        }
         const currentEl = remoteVideoRef?.current || internalVideoRef.current;
         if (currentEl) {
           attachAndPlay(currentEl, remoteStream);
@@ -112,14 +104,15 @@ export const RemoteVideoArea: React.FC<RemoteVideoAreaProps> = ({
   }, [remoteStream, remoteVideoRef, attachAndPlay]);
 
   const isConnected = callState === 'connected';
-  const showVideoFeed = isConnected && isRemoteCameraOn && hasLiveVideoTrack;
+  const hasVideoTrack = Boolean(remoteStream && remoteStream.getVideoTracks().length > 0);
+  const showVideoFeed = isConnected && isRemoteCameraOn && (hasVideoTrack || hasLiveVideoTrack);
 
   return (
     <div className="relative w-full h-full bg-zinc-950 flex flex-col justify-between overflow-hidden select-none">
       {/* Hidden dedicated audio element to guarantee remote voice playback */}
       <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
 
-      {/* Real WebRTC Remote Video Element - NEVER display: none so decoder stays active */}
+      {/* Real WebRTC Remote Video Element - permanently muted so browser never blocks or pauses video */}
       <video
         ref={(el) => {
           internalVideoRef.current = el;
@@ -132,6 +125,10 @@ export const RemoteVideoArea: React.FC<RemoteVideoAreaProps> = ({
         }}
         autoPlay
         playsInline
+        muted
+        onLoadedMetadata={() => setHasLiveVideoTrack(true)}
+        onCanPlay={() => setHasLiveVideoTrack(true)}
+        onPlaying={() => setHasLiveVideoTrack(true)}
         className={cn(
           'w-full h-full object-cover absolute inset-0 transition-opacity duration-300',
           showVideoFeed ? 'opacity-100 z-10' : 'opacity-0 -z-10 pointer-events-none'
