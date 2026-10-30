@@ -204,11 +204,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         bio: p.about || 'Hey there! I am using WhatsApp.',
         phone: p.phone || '',
         presence: (p.isOnline ? 'online' : 'offline') as any,
+        lastSeen: p.lastSeen,
       }));
 
       setUsers((prev) => {
-        const missing = participantObjs.filter((po: any) => po.id !== currentUser.id && !prev.some((u) => u.id === po.id));
-        return missing.length > 0 ? [...prev, ...missing] : prev;
+        let updated = [...prev];
+        let changed = false;
+        participantObjs.forEach((po: any) => {
+          if (po.id === currentUser.id) return;
+          const idx = updated.findIndex((u) => u.id === po.id);
+          if (idx >= 0) {
+            if (po.lastSeen && !updated[idx].lastSeen) {
+              updated[idx] = { ...updated[idx], lastSeen: po.lastSeen };
+              changed = true;
+            }
+          } else {
+            updated.push(po);
+            changed = true;
+          }
+        });
+        return changed ? updated : prev;
       });
 
       const participantIds = participantObjs.map((p: any) => p.id);
@@ -362,7 +377,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           bio: u.about || 'Hey there! I am using WhatsApp.',
           phone: u.phone || '',
           presence: u.isOnline ? 'online' : 'offline',
-          lastSeen: formatLastSeen(u.lastSeen, Boolean(u.isOnline)),
+          lastSeen: u.lastSeen,
         }));
         setUsers(mappedUsers);
       }

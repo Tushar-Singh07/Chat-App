@@ -24,13 +24,26 @@ export const getPresenceBadgeColor = (presence: Presence): string => {
 };
 
 /**
- * Formats a last-seen date/time accurately in local user time.
+ * Formats a Date into standard 12-hour format with AM/PM (e.g., "4:35 PM").
+ */
+export const formatTime = (date: Date): string => {
+  let hours = date.getHours();
+  const minutes = date.getMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const minutesStr = minutes < 10 ? `0${minutes}` : `${minutes}`;
+  return `${hours}:${minutesStr} ${ampm}`;
+};
+
+/**
+ * Formats a last-seen date/time accurately with:
  * - "online" if isOnline is true
- * - "last seen just now" if < 1 minute ago
- * - "last seen today at 8:15 PM"
- * - "last seen yesterday at 10:30 AM"
- * - "last seen 25 Oct at 4:20 PM"
- * - "last seen 15 Jan 2024 at 1:10 PM"
+ * - "last seen today at 4:35 PM" if last online today
+ * - "last seen yesterday at 11:20 PM" if last online yesterday
+ * - "last seen Wednesday at 2:15 PM" if within the past week (day of the week)
+ * - "last seen 20 Oct at 5:30 PM" if older than 7 days
+ * - "last seen 20 Oct 2025 at 5:30 PM" if previous years
  */
 export const formatLastSeen = (raw?: string | Date | null, isOnline?: boolean): string => {
   if (isOnline || raw === 'Online' || raw === 'online') {
@@ -49,7 +62,6 @@ export const formatLastSeen = (raw?: string | Date | null, isOnline?: boolean): 
   if (raw instanceof Date) {
     date = raw;
   } else {
-    // If it's a raw time like "08:15 PM" or "14:20" without date
     const timeOnlyMatch = typeof raw === 'string' && raw.match(/^(\d{1,2}):(\d{2})(\s*[APap][Mm])?$/);
     if (timeOnlyMatch) {
       return `last seen today at ${raw}`;
@@ -62,40 +74,29 @@ export const formatLastSeen = (raw?: string | Date | null, isOnline?: boolean): 
   }
 
   const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
+  const timeStr = formatTime(date);
 
-  // If in the future or under 1 minute ago
-  if (diffMs < 60 * 1000 && diffMs >= -5000) {
-    return 'last seen just now';
-  }
+  // Compare calendar days (midnight to midnight)
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfTarget = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const diffDays = Math.round((startOfToday - startOfTarget) / (1000 * 60 * 60 * 24));
 
-  const timeStr = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
-
-  const isToday =
-    now.getDate() === date.getDate() &&
-    now.getMonth() === date.getMonth() &&
-    now.getFullYear() === date.getFullYear();
-
-  if (isToday) {
+  if (diffDays <= 0) {
     return `last seen today at ${timeStr}`;
   }
 
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  const isYesterday =
-    yesterday.getDate() === date.getDate() &&
-    yesterday.getMonth() === date.getMonth() &&
-    yesterday.getFullYear() === date.getFullYear();
-
-  if (isYesterday) {
+  if (diffDays === 1) {
     return `last seen yesterday at ${timeStr}`;
   }
 
-  const isThisYear = now.getFullYear() === date.getFullYear();
-  const day = date.getDate();
-  const month = date.toLocaleDateString([], { month: 'short' });
+  if (diffDays > 1 && diffDays < 7) {
+    const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
+    return `last seen ${dayName} at ${timeStr}`;
+  }
 
-  if (isThisYear) {
+  const day = date.getDate();
+  const month = date.toLocaleDateString('en-US', { month: 'short' });
+  if (now.getFullYear() === date.getFullYear()) {
     return `last seen ${day} ${month} at ${timeStr}`;
   }
 

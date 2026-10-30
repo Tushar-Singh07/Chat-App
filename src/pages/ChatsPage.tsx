@@ -566,7 +566,14 @@ export const ChatsPage: React.FC = () => {
                     ) : targetPresence?.status === 'online' ? (
                       <span className="text-emerald-600 dark:text-[#00a884] font-medium">online</span>
                     ) : (
-                      <span>{targetPresence?.lastSeen || formatLastSeen(targetUser.lastSeen, false)}</span>
+                      <span>
+                        {formatLastSeen(
+                          targetPresence?.lastSeen && targetPresence.lastSeen !== 'offline'
+                            ? targetPresence.lastSeen
+                            : targetUser.lastSeen,
+                          false
+                        )}
+                      </span>
                     )}
                   </p>
                 </div>
