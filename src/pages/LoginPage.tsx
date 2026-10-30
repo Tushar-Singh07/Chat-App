@@ -181,23 +181,19 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
 
-          {/* Verification code helper link for new users */}
-          <div className="mt-4 pt-4 border-t border-zinc-200 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={() => navigate('/verify-email', { state: { email } })}
-              className="w-full py-2.5 px-3 bg-zinc-100 hover:bg-zinc-200 dark:bg-slate-950/50 dark:hover:bg-slate-800 border border-zinc-200 dark:border-slate-800 hover:border-zinc-300 dark:hover:border-slate-700 text-zinc-700 dark:text-slate-400 dark:hover:text-slate-200 font-medium rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <KeyRound className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>Newly registered? Enter your verification code</span>
-            </button>
-          </div>
-
           {/* Register Link */}
           <div className="mt-6 text-center text-sm text-zinc-600 dark:text-slate-400">
             Don't have an account?{' '}
             <Link to="/register" className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 font-medium transition underline">
               Create an account
+            </Link>
+          </div>
+
+          {/* Discreet helper for unverified new accounts */}
+          <div className="mt-3 text-center text-xs text-zinc-500 dark:text-slate-500">
+            New user with a pending verification code?{' '}
+            <Link to="/verify-email" state={{ email }} className="text-emerald-600 dark:text-emerald-400 hover:underline font-medium">
+              Verify code
             </Link>
           </div>
         </div>

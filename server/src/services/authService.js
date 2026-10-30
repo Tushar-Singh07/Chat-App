@@ -95,40 +95,11 @@ export const loginUser = async ({ email, password }) => {
     throw error;
   }
 
-  // If a new user registered but has not yet verified their email code
-  if (user.isVerified === false) {
-    if (!isSmtpConfigured()) {
-      // Auto-verify if email service is not configured on server
-      user.isVerified = true;
-      user.verificationCode = undefined;
-      user.verificationCodeExpires = undefined;
-      await user.save();
-    } else {
-      // Generate fresh code and email it so they can easily complete verification
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      user.verificationCode = code;
-      user.verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
-      await user.save();
-
-      try {
-        await sendVerificationEmail(normalizedEmail, code);
-      } catch (e) {
-        console.error(`Failed to send verification email to ${normalizedEmail}:`, e);
-      }
-
-      const error = new Error('Please verify your email address to complete registration');
-      error.statusCode = 403;
-      error.requiresVerification = true;
-      error.email = normalizedEmail;
-      throw error;
-    }
-  }
-
-  // Ensure verified status is persisted
-  if (user.isVerified === undefined) {
-    user.isVerified = true;
-  }
-
+  // Once email and password match, log the user in directly!
+  // Persist verified status so existing users simply log in with email & password without verification prompts
+  user.isVerified = true;
+  user.verificationCode = undefined;
+  user.verificationCodeExpires = undefined;
   user.isOnline = true;
   user.lastSeen = new Date();
   await user.save();
