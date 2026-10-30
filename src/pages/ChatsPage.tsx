@@ -160,12 +160,12 @@ export const ChatsPage: React.FC = () => {
     ? typingUsers[currentConvId] || targetPresence?.status === 'typing'
     : false;
 
-  // Mark received messages as seen when opening a chat
+  // Mark received messages as seen when opening a chat or when new messages arrive
   useEffect(() => {
     if (currentConvId) {
       markAsRead(currentConvId);
     }
-  }, [currentConvId, markAsRead]);
+  }, [currentConvId, rawMessages.length, markAsRead]);
 
   // Filter in-chat messages if chat search is active
   const conversationMessages = chatSearchQuery.trim()

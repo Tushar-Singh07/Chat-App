@@ -120,6 +120,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [calls, setCalls] = useState<Call[]>([]);
   const [activeTab, setActiveTab] = useState<ActiveTab>('chats');
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const activeConversationIdRef = useRef<string | null>(null);
+  const currentUserIdRef = useRef<string>(currentUser.id);
+
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    currentUserIdRef.current = currentUser.id;
+  }, [currentUser.id]);
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('whatsapp_theme') as 'dark' | 'light';
@@ -397,6 +407,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Messages listener
     socketService.onReceiveMessage((incomingMsg) => {
       const norm = normalizeMessage(incomingMsg);
+      const isCurrentChatOpen = activeConversationIdRef.current === norm.conversationId;
+
       setMessages((prev) => ({
         ...prev,
         [norm.conversationId]: [...(prev[norm.conversationId] || []), norm],
@@ -409,14 +421,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ...c,
                 lastMessage: norm,
                 updatedAt: new Date().toISOString(),
-                unreadCount: activeConversationId === norm.conversationId ? 0 : (c.unreadCount || 0) + 1,
+                unreadCount: isCurrentChatOpen ? 0 : (c.unreadCount || 0) + 1,
               }
             : c
         )
       );
 
-      // If receiver currently has this conversation open, acknowledge as read immediately
-      if (activeConversationId === norm.conversationId) {
+      // If receiver currently has this conversation open, acknowledge as read immediately (turn blue ticks)
+      if (isCurrentChatOpen) {
         socketService.markRead(norm.conversationId);
         chatService.markMessagesAsRead(norm.conversationId).catch(() => {});
       }
@@ -457,23 +469,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     socketService.onMessagesRead((data) => {
       if (!data?.conversationId) return;
 
+      const targetConvId = String(data.conversationId);
+      const readerId = data.readerId ? String(data.readerId) : '';
+      const myId = String(currentUserIdRef.current);
+
       setMessages((prev) => {
-        if (!prev[data.conversationId]) return prev;
+        if (!prev[targetConvId]) return prev;
         return {
           ...prev,
-          [data.conversationId]: prev[data.conversationId].map((m) =>
-            m.senderId === currentUser.id && m.status !== 'read' ? { ...m, status: 'read' } : m
-          ),
+          [targetConvId]: prev[targetConvId].map((m) => {
+            const senderIdStr = String(m.senderId);
+            const shouldMarkRead = senderIdStr === myId || (readerId && senderIdStr !== readerId);
+            if (shouldMarkRead && m.status !== 'read') {
+              return { ...m, status: 'read' };
+            }
+            return m;
+          }),
         };
       });
 
       setConversations((prev) =>
         prev.map((c) => {
-          if (c.id === data.conversationId && c.lastMessage && c.lastMessage.senderId === currentUser.id) {
-            return {
-              ...c,
-              lastMessage: { ...c.lastMessage, status: 'read' },
-            };
+          if (String(c.id) === targetConvId && c.lastMessage) {
+            const senderIdStr = String(c.lastMessage.senderId);
+            const shouldMarkRead = senderIdStr === myId || (readerId && senderIdStr !== readerId);
+            if (shouldMarkRead) {
+              return {
+                ...c,
+                lastMessage: { ...c.lastMessage, status: 'read' },
+              };
+            }
           }
           return c;
         })
@@ -619,28 +644,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return () => {
       socketService.offReceiveMessage();
+      socketService.offMessagesDelivered();
+      socketService.offMessagesRead();
       socketService.offCallEvents();
       socketService.disconnect();
     };
   }, [authUser?.id, normalizeConversation, reloadCallLogs, cleanupCallSession, addToast]);
 
-  // Fetch messages when active conversation changes
+  // Fetch messages and mark as read when active conversation changes
   useEffect(() => {
     if (!activeConversationId) return;
 
     socketService.joinConversation(activeConversationId);
+    socketService.markRead(activeConversationId);
+    chatService.markMessagesAsRead(activeConversationId).catch(() => {});
 
-    if (!messages[activeConversationId]) {
-      chatService.getMessages(activeConversationId).then((res) => {
-        if (res.success && res.data) {
-          const normMsgs = res.data.map(normalizeMessage);
-          setMessages((prev) => ({
-            ...prev,
-            [activeConversationId]: normMsgs,
-          }));
-        }
-      });
-    }
+    setConversations((prev) =>
+      prev.map((c) => (c.id === activeConversationId ? { ...c, unreadCount: 0 } : c))
+    );
+
+    chatService.getMessages(activeConversationId).then((res) => {
+      if (res.success && res.data) {
+        const normMsgs = res.data.map(normalizeMessage);
+        setMessages((prev) => ({
+          ...prev,
+          [activeConversationId]: normMsgs,
+        }));
+      }
+    });
 
     return () => {
       socketService.leaveConversation(activeConversationId);

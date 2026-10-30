@@ -97,9 +97,7 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
     <div
       onClick={() => {
         onSelect();
-        if (conversation.unreadCount > 0) {
-          markAsRead(conversation.id);
-        }
+        markAsRead(conversation.id);
       }}
       onContextMenu={handleContextMenu}
       className={cn(

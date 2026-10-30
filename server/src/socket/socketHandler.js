@@ -17,6 +17,18 @@ export const isUserOnline = (userId) => {
   return Boolean(set && set.size > 0);
 };
 
+export const isUserInConversation = (conversationId, userId) => {
+  if (!ioInstance || !conversationId || !userId) return false;
+  const room = ioInstance.sockets?.adapter?.rooms?.get(conversationId.toString());
+  if (!room) return false;
+  const userSocketIds = userSockets.get(userId.toString());
+  if (!userSocketIds || userSocketIds.size === 0) return false;
+  for (const sId of userSocketIds) {
+    if (room.has(sId)) return true;
+  }
+  return false;
+};
+
 export const getUserSockets = (userId) => {
   return userSockets.get(userId?.toString()) || new Set();
 };
@@ -166,35 +178,37 @@ export const setupSocketIO = (io) => {
         const conv = await Conversation.findById(conversationId);
         if (!conv || !conv.participants.some((p) => p.toString() === userId.toString())) return;
 
-        const unreadMsgs = await Message.find({
-          conversationId,
-          senderId: { $ne: userId },
-          status: { $in: ['sent', 'delivered'] },
-        });
+        // Mark all messages from other senders as 'read'
+        await Message.updateMany(
+          {
+            conversationId,
+            senderId: { $ne: userId },
+            status: { $in: ['sent', 'delivered'] },
+          },
+          { status: 'read' }
+        );
 
-        if (unreadMsgs.length > 0) {
-          await Message.updateMany(
-            { _id: { $in: unreadMsgs.map((m) => m._id) } },
-            { status: 'read' }
-          );
+        if (conv.unreadCounts) {
+          conv.unreadCounts.set(userId.toString(), 0);
+          await conv.save();
+        }
 
-          if (conv.unreadCounts) {
-            conv.unreadCounts.set(userId.toString(), 0);
-            await conv.save();
-          }
+        const readPayload = {
+          conversationId: conversationId.toString(),
+          readerId: userId.toString(),
+          status: 'read',
+        };
 
-          // Emit messages_read event to sender(s)
-          for (const p of conv.participants) {
-            const pId = p.toString();
-            if (pId !== userId) {
-              io.to(`user:${pId}`).emit('messages_read', {
-                conversationId,
-                readerId: userId,
-                status: 'read',
-              });
-            }
+        // Emit messages_read event to all other participants' personal rooms
+        for (const p of conv.participants) {
+          const pId = p.toString();
+          if (pId !== userId.toString()) {
+            io.to(`user:${pId}`).emit('messages_read', readPayload);
           }
         }
+
+        // Also broadcast to conversation room so anyone active in this chat receives it
+        socket.to(conversationId.toString()).emit('messages_read', readPayload);
       } catch (err) {
         console.error('Socket mark_read error:', err);
       }
