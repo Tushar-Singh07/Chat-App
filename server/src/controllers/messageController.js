@@ -81,11 +81,15 @@ export const sendMessage = async (req, res, next) => {
     }
     await conversation.save();
 
-    // Broadcast in real-time to receiver if online
+    // Broadcast in real-time to other participants only (never duplicate back to sender)
     const io = getIO();
-    if (io && receiverId) {
-      io.to(`user:${receiverId}`).emit('receive_message', populatedMessage);
-      io.to(conversationId.toString()).emit('receive_message', populatedMessage);
+    if (io && conversation.participants) {
+      conversation.participants.forEach((p) => {
+        const pId = p.toString();
+        if (pId !== senderId.toString()) {
+          io.to(`user:${pId}`).emit('receive_message', populatedMessage);
+        }
+      });
     }
 
     res.status(201).json({ success: true, data: populatedMessage });

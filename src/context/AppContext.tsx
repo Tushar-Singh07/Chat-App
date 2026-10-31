@@ -419,15 +419,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Fetch calls
     reloadCallLogs();
 
-    // Messages listener
     socketService.onReceiveMessage((incomingMsg) => {
       const norm = normalizeMessage(incomingMsg);
       const isCurrentChatOpen = activeConversationIdRef.current === norm.conversationId;
 
-      setMessages((prev) => ({
-        ...prev,
-        [norm.conversationId]: [...(prev[norm.conversationId] || []), norm],
-      }));
+      setMessages((prev) => {
+        const currentList = prev[norm.conversationId] || [];
+        if (currentList.some((m) => m.id === norm.id)) {
+          return {
+            ...prev,
+            [norm.conversationId]: currentList.map((m) => (m.id === norm.id ? { ...m, ...norm } : m)),
+          };
+        }
+        return {
+          ...prev,
+          [norm.conversationId]: [...currentList, norm],
+        };
+      });
 
       setConversations((prev) =>
         prev.map((c) =>
@@ -1178,10 +1186,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (res.success && res.data) {
         const norm = normalizeMessage(res.data);
-        setMessages((prev) => ({
-          ...prev,
-          [conversationId]: [...(prev[conversationId] || []), norm],
-        }));
+        setMessages((prev) => {
+          const currentList = prev[conversationId] || [];
+          if (currentList.some((m) => m.id === norm.id)) {
+            return prev;
+          }
+          return {
+            ...prev,
+            [conversationId]: [...currentList, norm],
+          };
+        });
 
         setConversations((prev) =>
           prev.map((c) =>
@@ -1190,8 +1204,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               : c
           )
         );
-
-        socketService.sendMessage(res.data);
       }
     },
     []

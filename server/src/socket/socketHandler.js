@@ -152,9 +152,7 @@ export const setupSocketIO = (io) => {
     // Real-Time Messages
     socket.on('send_message', async (message) => {
       if (message && message.conversationId) {
-        socket.to(message.conversationId).emit('receive_message', message);
-
-        // Also broadcast to receiver's user room in case they haven't joined the conversation room yet
+        // Broadcast strictly once to other participants' private user rooms
         try {
           const conv = await Conversation.findById(message.conversationId);
           if (conv && conv.participants) {

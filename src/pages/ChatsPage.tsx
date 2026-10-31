@@ -256,19 +256,25 @@ export const ChatsPage: React.FC = () => {
   };
 
   // Submit Text / Voice Message
-  const handleSendMessage = (e?: React.FormEvent) => {
+  const isSendingRef = useRef(false);
+
+  const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!currentConvId || !messageInput.trim()) return;
+    if (!currentConvId || !messageInput.trim() || isSendingRef.current) return;
 
-    sendMessage(
-      currentConvId,
-      messageInput.trim(),
-      replyTarget ? replyTarget.id : undefined
-    );
+    const textToSend = messageInput.trim();
+    const replyId = replyTarget ? replyTarget.id : undefined;
 
+    isSendingRef.current = true;
     setMessageInput('');
     setReplyTarget(null);
     setShowEmojiPicker(false);
+
+    try {
+      await sendMessage(currentConvId, textToSend, replyId);
+    } finally {
+      isSendingRef.current = false;
+    }
   };
 
   // Handle File Input Change (Local Object URL generation)
