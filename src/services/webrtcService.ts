@@ -43,6 +43,7 @@ export class WebRTCService {
   private pendingIceCandidates: RTCIceCandidateInit[] = [];
   private onRemoteStreamCallback: ((stream: MediaStream) => void) | null = null;
   private onIceCandidateCallback: ((candidate: RTCIceCandidate) => void) | null = null;
+  private facingMode: 'user' | 'environment' = 'user';
 
   async getMediaStream(isVideo: boolean): Promise<MediaStream> {
     try {
@@ -272,6 +273,90 @@ export class WebRTCService {
     }
   }
 
+  getFacingMode(): 'user' | 'environment' {
+    return this.facingMode;
+  }
+
+  async switchCamera(targetFacingMode?: 'user' | 'environment'): Promise<'user' | 'environment'> {
+    const nextMode = targetFacingMode || (this.facingMode === 'user' ? 'environment' : 'user');
+    console.log(`[WebRTC] Switching camera from ${this.facingMode} to ${nextMode}`);
+
+    let newStream: MediaStream | null = null;
+    let switchError: any = null;
+
+    // 1. Try with ideal facingMode
+    try {
+      newStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: nextMode },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
+    } catch (err: any) {
+      console.warn('[WebRTC] Ideal camera constraint failed, trying exact facingMode:', err?.message);
+      try {
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: nextMode },
+          audio: false,
+        });
+      } catch (err2: any) {
+        switchError = err2;
+      }
+    }
+
+    // 2. If facingMode failed, check if multiple video devices exist and switch to another camera device
+    if (!newStream && navigator.mediaDevices?.enumerateDevices) {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter((d) => d.kind === 'videoinput');
+        if (videoDevices.length > 1) {
+          const currentTrack = this.localStream?.getVideoTracks()[0];
+          const currentDeviceId = currentTrack?.getSettings()?.deviceId;
+          const targetDevice = videoDevices.find((d) => d.deviceId && d.deviceId !== currentDeviceId) || videoDevices[1];
+          if (targetDevice) {
+            newStream = await navigator.mediaDevices.getUserMedia({
+              video: { deviceId: { exact: targetDevice.deviceId } },
+              audio: false,
+            });
+          }
+        }
+      } catch (enumErr: any) {
+        console.warn('[WebRTC] Device enumeration switch failed:', enumErr?.message);
+      }
+    }
+
+    if (!newStream) {
+      throw new Error(switchError?.message || `Unable to switch to ${nextMode} camera on this device.`);
+    }
+
+    const newVideoTrack = newStream.getVideoTracks()[0];
+    if (!newVideoTrack) {
+      throw new Error('Target camera video track could not be acquired.');
+    }
+
+    // Seamlessly swap the track on the RTCPeerConnection sender so peer receives the new camera feed without call drop
+    if (this.peerConnection) {
+      const senders = this.peerConnection.getSenders();
+      const videoSender = senders.find((s) => s.track && s.track.kind === 'video');
+      if (videoSender) {
+        await videoSender.replaceTrack(newVideoTrack);
+      }
+    }
+
+    // Stop and swap old local video tracks
+    if (this.localStream) {
+      const oldTracks = this.localStream.getVideoTracks();
+      oldTracks.forEach((t) => t.stop());
+      oldTracks.forEach((t) => this.localStream!.removeTrack(t));
+      this.localStream.addTrack(newVideoTrack);
+    }
+
+    this.facingMode = nextMode;
+    return nextMode;
+  }
+
   getLocalStream(): MediaStream | null {
     return this.localStream;
   }
@@ -296,5 +381,6 @@ export class WebRTCService {
     this.pendingIceCandidates = [];
     this.onRemoteStreamCallback = null;
     this.onIceCandidateCallback = null;
+    this.facingMode = 'user';
   }
 }

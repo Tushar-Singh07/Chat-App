@@ -383,7 +383,7 @@ export const ChatsPage: React.FC = () => {
   });
 
   return (
-    <div className="flex w-full h-full overflow-hidden bg-white dark:bg-[#111b21]">
+    <div className="flex w-full h-full max-w-full max-h-full overflow-hidden bg-white dark:bg-[#111b21]">
       {/* Hidden File Inputs */}
       <input
         type="file"
@@ -505,7 +505,7 @@ export const ChatsPage: React.FC = () => {
           </div>
 
           {/* Conversations Items List */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
             {filteredConversations.length === 0 ? (
               <EmptyState
                 icon={<MessageSquare className="w-10 h-10 text-emerald-500" />}
@@ -534,7 +534,7 @@ export const ChatsPage: React.FC = () => {
       {/* ----------------- MAIN INDIVIDUAL CHAT VIEW ----------------- */}
       {showChat && (
         currentConversation && targetUser ? (
-          <div className="flex-1 flex flex-col h-full bg-zinc-50 dark:bg-[#0b141a] border-l border-zinc-200 dark:border-[#222d34] overflow-hidden relative">
+          <div className="flex-1 flex flex-col h-full max-h-full max-w-full bg-zinc-50 dark:bg-[#0b141a] border-l border-zinc-200 dark:border-[#222d34] overflow-hidden relative">
             {/* Top Chat Header */}
             <div className="flex items-center justify-between px-4 py-3 bg-zinc-100 dark:bg-[#202c33] border-b border-zinc-200 dark:border-[#222d34] z-20">
               <div className="flex items-center gap-3">
@@ -767,7 +767,7 @@ export const ChatsPage: React.FC = () => {
             ) : (
               <form
                 onSubmit={handleSendMessage}
-                className="flex items-center gap-2 p-3 bg-zinc-100 dark:bg-[#202c33] border-t border-zinc-200 dark:border-[#222d34] z-20"
+                className="flex items-center gap-2 p-2.5 sm:p-3 bg-zinc-100 dark:bg-[#202c33] border-t border-zinc-200 dark:border-[#222d34] z-20 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]"
               >
                 <button
                   type="button"

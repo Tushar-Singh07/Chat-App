@@ -17,17 +17,18 @@ export const MainLayout: React.FC = () => {
     toggleMuteCall,
     toggleCameraCall,
     toggleSpeakerCall,
+    switchCameraCall,
   } = useApp();
 
   return (
-    <div className="flex h-screen w-screen bg-zinc-100 dark:bg-[#0b141a] text-zinc-900 dark:text-zinc-100 overflow-hidden font-sans select-none">
+    <div className="flex h-screen h-[100dvh] w-screen max-w-full bg-zinc-100 dark:bg-[#0b141a] text-zinc-900 dark:text-zinc-100 overflow-hidden font-sans select-none">
       {/* Desktop Left Navigation Bar */}
       <div className="hidden md:flex flex-shrink-0">
         <SidebarNav />
       </div>
 
       {/* Main Outlet View Area */}
-      <main className="flex-1 flex w-full h-full overflow-hidden relative">
+      <main className="flex-1 flex w-full h-full max-w-full max-h-full overflow-hidden relative">
         <Outlet />
       </main>
 
@@ -73,6 +74,8 @@ export const MainLayout: React.FC = () => {
         onToggleCamera={toggleCameraCall}
         isSpeakerOn={activeCallSession.isSpeakerOn}
         onToggleSpeaker={toggleSpeakerCall}
+        facingMode={activeCallSession.facingMode || 'user'}
+        onSwitchCamera={switchCameraCall}
         onEndCall={endCallSession}
         onClose={endCallSession}
       />

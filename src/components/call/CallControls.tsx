@@ -12,6 +12,7 @@ import {
   VideoOff,
   ScreenShare,
   Sparkles,
+  SwitchCamera,
 } from 'lucide-react';
 import { Dropdown } from '../Dropdown';
 import { useToast } from '../../context/ToastContext';
@@ -26,6 +27,8 @@ interface CallControlsProps {
   isVideoCall?: boolean;
   isCameraOn?: boolean;
   onToggleCamera?: () => void;
+  facingMode?: 'user' | 'environment';
+  onSwitchCamera?: () => void;
   className?: string;
 }
 
@@ -38,6 +41,8 @@ export const CallControls: React.FC<CallControlsProps> = ({
   isVideoCall = false,
   isCameraOn: propIsCameraOn,
   onToggleCamera,
+  facingMode = 'user',
+  onSwitchCamera,
   className,
 }) => {
   const { addToast } = useToast();
@@ -88,12 +93,12 @@ export const CallControls: React.FC<CallControlsProps> = ({
   };
 
   return (
-    <div className={cn('flex items-center justify-center gap-3 sm:gap-5 select-none', className)}>
+    <div className={cn('flex items-center justify-center gap-2 sm:gap-4 select-none', className)}>
       {/* Microphone Toggle Button */}
       <button
         onClick={handleToggleMute}
         className={cn(
-          'p-3.5 sm:p-4 rounded-full transition-all duration-200 active:scale-90 shadow-lg',
+          'p-2.5 sm:p-3.5 rounded-full transition-all duration-200 active:scale-90 shadow-lg',
           isMuted
             ? 'bg-rose-600 text-white ring-4 ring-rose-600/30'
             : 'bg-white/15 text-white hover:bg-white/25'
@@ -108,7 +113,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
         <button
           onClick={handleToggleCamera}
           className={cn(
-            'p-3.5 sm:p-4 rounded-full transition-all duration-200 active:scale-90 shadow-lg',
+            'p-2.5 sm:p-3.5 rounded-full transition-all duration-200 active:scale-90 shadow-lg',
             !isCameraOn
               ? 'bg-rose-600 text-white ring-4 ring-rose-600/30'
               : 'bg-white/15 text-white hover:bg-white/25'
@@ -119,11 +124,25 @@ export const CallControls: React.FC<CallControlsProps> = ({
         </button>
       )}
 
+      {/* Switch Camera Button (Selfie <-> Rear) */}
+      {isVideoCall && onSwitchCamera && (
+        <button
+          onClick={onSwitchCamera}
+          className={cn(
+            'p-2.5 sm:p-3.5 rounded-full transition-all duration-200 active:scale-90 shadow-lg',
+            'bg-white/15 text-white hover:bg-white/25 ring-2 ring-white/10'
+          )}
+          title={facingMode === 'environment' ? 'Switch to Selfie (Front) Camera' : 'Switch to Rear (Back) Camera'}
+        >
+          <SwitchCamera className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
+        </button>
+      )}
+
       {/* Speaker Toggle Button */}
       <button
         onClick={handleToggleSpeaker}
         className={cn(
-          'p-3.5 sm:p-4 rounded-full transition-all duration-200 active:scale-90 shadow-lg',
+          'p-2.5 sm:p-3.5 rounded-full transition-all duration-200 active:scale-90 shadow-lg',
           isSpeakerOn
             ? 'bg-white/25 text-white ring-4 ring-white/20'
             : 'bg-white/15 text-white hover:bg-white/25'
@@ -138,7 +157,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
         align="left"
         trigger={
           <button
-            className="p-3.5 sm:p-4 rounded-full bg-white/15 text-white hover:bg-white/25 transition-all duration-200 active:scale-90 shadow-lg"
+            className="p-2.5 sm:p-3.5 rounded-full bg-white/15 text-white hover:bg-white/25 transition-all duration-200 active:scale-90 shadow-lg"
             title="More Options"
           >
             <MoreVertical className="w-5 h-5 sm:w-6 sm:h-6" />
@@ -179,7 +198,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
       {/* End Call Button */}
       <button
         onClick={onEndCall}
-        className="p-3.5 sm:p-4 rounded-full bg-rose-600 hover:bg-rose-700 text-white shadow-xl transition-all duration-200 active:scale-90 ring-4 ring-rose-600/40 ml-1"
+        className="p-2.5 sm:p-3.5 rounded-full bg-rose-600 hover:bg-rose-700 text-white shadow-xl transition-all duration-200 active:scale-90 ring-4 ring-rose-600/40 ml-0.5 sm:ml-1"
         title="End Call"
       >
         <PhoneOff className="w-5 h-5 sm:w-6 sm:h-6" />

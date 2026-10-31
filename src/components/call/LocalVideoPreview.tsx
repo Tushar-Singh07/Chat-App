@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { CameraOff, MicOff, Move } from 'lucide-react';
+import { CameraOff, MicOff, Move, SwitchCamera } from 'lucide-react';
 import type { User } from '../../types';
 import { Avatar } from '../Avatar';
 import { cn } from '../../utils/cn';
@@ -10,6 +10,8 @@ interface LocalVideoPreviewProps {
   isMuted: boolean;
   localVideoRef?: React.RefObject<HTMLVideoElement | null>;
   localStream?: MediaStream | null;
+  facingMode?: 'user' | 'environment';
+  onSwitchCamera?: () => void;
   className?: string;
 }
 
@@ -19,6 +21,8 @@ export const LocalVideoPreview: React.FC<LocalVideoPreviewProps> = ({
   isMuted,
   localVideoRef,
   localStream,
+  facingMode = 'user',
+  onSwitchCamera,
   className,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -92,14 +96,14 @@ export const LocalVideoPreview: React.FC<LocalVideoPreviewProps> = ({
   const getPosClasses = () => {
     switch (position) {
       case 'top-right':
-        return 'top-20 right-4 sm:top-24 sm:right-6';
+        return 'top-20 right-3 sm:top-24 sm:right-6';
       case 'top-left':
-        return 'top-20 left-4 sm:top-24 sm:left-6';
+        return 'top-20 left-3 sm:top-24 sm:left-6';
       case 'bottom-left':
-        return 'bottom-24 left-4 sm:bottom-28 sm:left-6';
+        return 'bottom-20 left-3 sm:bottom-28 sm:left-6';
       case 'bottom-right':
       default:
-        return 'bottom-24 right-4 sm:bottom-28 sm:right-6';
+        return 'bottom-20 right-3 sm:bottom-28 sm:right-6';
     }
   };
 
@@ -107,13 +111,14 @@ export const LocalVideoPreview: React.FC<LocalVideoPreviewProps> = ({
     <div
       onClick={togglePosition}
       className={cn(
-        'absolute z-30 w-28 h-40 sm:w-40 sm:h-56 rounded-2xl shadow-2xl border-2 border-white/20 bg-zinc-900 overflow-hidden cursor-pointer transition-all duration-300 group hover:scale-105 active:scale-95 select-none touch-none',
+        'absolute z-30 w-28 h-40 sm:w-36 md:w-44 sm:h-52 md:h-60 rounded-2xl shadow-2xl border-2 border-white/20 bg-zinc-900 overflow-hidden cursor-pointer transition-all duration-300 group hover:scale-105 active:scale-95 select-none touch-none',
         getPosClasses(),
         className
       )}
       title="Click to reposition preview"
     >
       {/* Real WebRTC Local Video Stream Element */}
+      {/* NOTE: Mirror horizontally (-scale-x-100) only for selfie/user camera, keep normal (scale-x-100) for rear/environment camera */}
       <video
         ref={(el) => {
           if (localVideoRef && 'current' in localVideoRef) {
@@ -127,17 +132,24 @@ export const LocalVideoPreview: React.FC<LocalVideoPreviewProps> = ({
         autoPlay
         muted
         playsInline
-        className={isCameraOn ? 'w-full h-full object-cover absolute inset-0 z-10' : 'hidden'}
+        className={cn(
+          'w-full h-full object-cover absolute inset-0 z-10 transition-transform duration-300',
+          isCameraOn ? 'block' : 'hidden',
+          facingMode === 'user' ? '-scale-x-100' : 'scale-x-100'
+        )}
       />
 
       {isCameraOn ? (
         /* Camera ON: Simulated canvas overlay if no stream */
         !localStream && (
           <div className="relative w-full h-full z-0">
-            <canvas ref={canvasRef} className="w-full h-full object-cover" />
-            <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-[10px] font-semibold text-white uppercase tracking-wider border border-white/10">
-              You
-            </div>
+            <canvas
+              ref={canvasRef}
+              className={cn(
+                'w-full h-full object-cover transition-transform duration-300',
+                facingMode === 'user' ? '-scale-x-100' : 'scale-x-100'
+              )}
+            />
           </div>
         )
       ) : (
@@ -156,17 +168,41 @@ export const LocalVideoPreview: React.FC<LocalVideoPreviewProps> = ({
         </div>
       )}
 
+      {/* Top Left "You" Badge with active camera mode indicator */}
+      {isCameraOn && (
+        <div className="absolute top-2 left-2 z-20 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-[10px] font-semibold text-white tracking-wider border border-white/10 flex items-center gap-1 shadow-xs pointer-events-none">
+          <span>You</span>
+          <span className="text-emerald-400 font-normal">({facingMode === 'environment' ? 'Rear' : 'Selfie'})</span>
+        </div>
+      )}
+
+      {/* Quick Flip Camera Button on Local Video Preview */}
+      {onSwitchCamera && isCameraOn && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSwitchCamera();
+          }}
+          className="absolute bottom-2 left-2 z-30 p-1.5 rounded-full bg-black/75 hover:bg-black text-emerald-400 hover:text-white backdrop-blur-md border border-white/20 transition-all active:scale-90 shadow-lg"
+          title={facingMode === 'environment' ? 'Switch to Selfie Camera' : 'Switch to Rear Camera'}
+        >
+          <SwitchCamera className="w-3.5 h-3.5" />
+        </button>
+      )}
+
       {/* Mic Muted Overlay Badge */}
       {isMuted && (
-        <div className="absolute bottom-2 right-2 p-1.5 rounded-full bg-rose-600 text-white shadow-md ring-2 ring-black/40">
+        <div className="absolute bottom-2 right-2 z-20 p-1.5 rounded-full bg-rose-600 text-white shadow-md ring-2 ring-black/40">
           <MicOff className="w-3.5 h-3.5" />
         </div>
       )}
 
       {/* Move Hint Icon on Hover */}
-      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full bg-black/70 text-white">
+      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full bg-black/70 text-white z-20 pointer-events-none">
         <Move className="w-3.5 h-3.5" />
       </div>
     </div>
   );
 };
+

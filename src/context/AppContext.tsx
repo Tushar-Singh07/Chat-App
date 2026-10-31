@@ -27,6 +27,7 @@ export interface ActiveCallSession {
   isMuted: boolean;
   isCameraOn: boolean;
   isSpeakerOn: boolean;
+  facingMode?: 'user' | 'environment';
   seconds: number;
   conversationId?: string | null;
 }
@@ -69,6 +70,7 @@ interface AppContextType {
   toggleMuteCall: () => void;
   toggleCameraCall: () => void;
   toggleSpeakerCall: () => void;
+  switchCameraCall: () => Promise<void>;
 
   // Conversation Handlers
   togglePinConversation: (id: string) => void;
@@ -157,6 +159,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     isMuted: false,
     isCameraOn: true,
     isSpeakerOn: true,
+    facingMode: 'user',
     seconds: 0,
     conversationId: null,
   });
@@ -327,6 +330,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isMuted: false,
       isCameraOn: true,
       isSpeakerOn: true,
+      facingMode: 'user',
       seconds: 0,
       conversationId: null,
     });
@@ -865,6 +869,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           isMuted: false,
           isCameraOn: true,
           isSpeakerOn: true,
+          facingMode: 'user',
           seconds: 0,
           conversationId: conversationId || null,
         });
@@ -947,6 +952,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isMuted: false,
         isCameraOn: isVideo,
         isSpeakerOn: true,
+        facingMode: 'user',
         seconds: 0,
       });
 
@@ -1042,6 +1048,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast({ type: 'info', title: nextSpeaker ? 'Speaker On' : 'Speaker Off' });
       return { ...prev, isSpeakerOn: nextSpeaker };
     });
+  }, [addToast]);
+
+  // Switch Camera between Selfie and Rear
+  const switchCameraCall = useCallback(async () => {
+    if (!webrtcRef.current) return;
+    try {
+      const nextMode = await webrtcRef.current.switchCamera();
+      const newLocalStream = webrtcRef.current.getLocalStream();
+      setActiveCallSession((prev) => ({
+        ...prev,
+        facingMode: nextMode,
+        localStream: newLocalStream || prev.localStream,
+      }));
+      addToast({
+        type: 'info',
+        title: nextMode === 'environment' ? 'Switched to Rear Camera' : 'Switched to Selfie Camera',
+      });
+    } catch (err: any) {
+      console.warn('Switch camera error:', err);
+      addToast({
+        type: 'warning',
+        title: 'Camera Switch Unavailable',
+        description: err?.message || 'Could not switch camera on this device',
+      });
+    }
   }, [addToast]);
 
   // Legacy Call Handlers (for backward compatibility with existing components)
@@ -1283,6 +1314,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleMuteCall,
         toggleCameraCall,
         toggleSpeakerCall,
+        switchCameraCall,
         togglePinConversation,
         toggleMuteConversation,
         toggleArchiveConversation,

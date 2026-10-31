@@ -21,6 +21,8 @@ interface VideoCallScreenProps {
   onToggleCamera?: () => void;
   isSpeakerOn?: boolean;
   onToggleSpeaker?: () => void;
+  facingMode?: 'user' | 'environment';
+  onSwitchCamera?: () => void;
   onEndCall?: () => void;
 }
 
@@ -38,6 +40,8 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({
   onToggleCamera: propOnToggleCamera,
   isSpeakerOn: propIsSpeakerOn,
   onToggleSpeaker: propOnToggleSpeaker,
+  facingMode = 'user',
+  onSwitchCamera,
   onEndCall: propOnEndCall,
 }) => {
   const { currentUser } = useApp();
@@ -124,7 +128,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-between bg-zinc-950 text-white select-none animate-in fade-in duration-200 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex flex-col justify-between bg-zinc-950 text-white select-none animate-in fade-in duration-200 overflow-hidden w-full h-full h-[100dvh] max-w-full max-h-full">
       {/* ----------------- REMOTE VIDEO (LARGE AREA) ----------------- */}
       <RemoteVideoArea
         peerUser={peerUser}
@@ -142,11 +146,13 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({
         isMuted={isMuted}
         localVideoRef={localVideoRef}
         localStream={localStream}
+        facingMode={facingMode}
+        onSwitchCamera={onSwitchCamera}
       />
 
       {/* ----------------- CALL CONTROLS BAR (BOTTOM CENTER) ----------------- */}
-      <div className="absolute bottom-5 left-0 right-0 z-40 flex justify-center px-4 pointer-events-auto">
-        <div className="bg-zinc-900/80 backdrop-blur-xl px-5 py-3 rounded-full border border-white/10 shadow-2xl">
+      <div className="absolute bottom-4 sm:bottom-6 left-0 right-0 z-40 flex justify-center px-3 sm:px-4 pointer-events-auto pb-[env(safe-area-inset-bottom,0px)]">
+        <div className="bg-zinc-900/85 backdrop-blur-xl px-3 sm:px-5 py-2.5 sm:py-3.5 rounded-full border border-white/10 shadow-2xl max-w-[96vw] overflow-x-auto no-scrollbar">
           <CallControls
             isVideoCall
             isMuted={isMuted}
@@ -155,6 +161,8 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({
             onToggleCamera={handleToggleCamera}
             isSpeakerOn={isSpeakerOn}
             onToggleSpeaker={handleToggleSpeaker}
+            facingMode={facingMode}
+            onSwitchCamera={onSwitchCamera}
             onEndCall={handleEndCall}
           />
         </div>

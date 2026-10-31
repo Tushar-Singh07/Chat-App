@@ -85,7 +85,7 @@ export const VoiceCallScreen: React.FC<VoiceCallScreenProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-between bg-zinc-950 text-white p-8 select-none animate-in fade-in duration-200 chat-bg-pattern">
+    <div className="fixed inset-0 z-50 flex flex-col justify-between bg-zinc-950 text-white p-4 sm:p-8 select-none animate-in fade-in duration-200 chat-bg-pattern w-full h-full h-[100dvh] max-w-full max-h-full overflow-hidden">
       {/* Hidden Remote Audio Element for WebRTC MediaStream */}
       <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
 
@@ -135,7 +135,7 @@ export const VoiceCallScreen: React.FC<VoiceCallScreenProps> = ({
       </div>
 
       {/* Bottom Controls Bar */}
-      <div className="py-6 border-t border-zinc-900">
+      <div className="py-4 sm:py-6 border-t border-zinc-900 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
         <CallControls
           isMuted={isMuted}
           onToggleMute={onToggleMute}
