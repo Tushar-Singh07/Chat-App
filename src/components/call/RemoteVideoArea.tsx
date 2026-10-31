@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { ShieldCheck, Lock, Signal, Maximize2, Minimize2 } from 'lucide-react';
+import { ShieldCheck, Lock, Signal, Maximize2, Minimize2, ArrowLeft } from 'lucide-react';
 import type { User } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { Avatar } from '../Avatar';
@@ -14,6 +14,7 @@ interface RemoteVideoAreaProps {
   remoteVideoRef?: React.RefObject<HTMLVideoElement | null>;
   remoteStream?: MediaStream | null;
   seconds: number;
+  onMinimize?: () => void;
 }
 
 export const RemoteVideoArea: React.FC<RemoteVideoAreaProps> = ({
@@ -23,12 +24,12 @@ export const RemoteVideoArea: React.FC<RemoteVideoAreaProps> = ({
   remoteVideoRef,
   remoteStream,
   seconds,
+  onMinimize,
 }) => {
   const { getUserPresence } = useApp();
   const peerPresence = getUserPresence(peerUser.id);
   const internalVideoRef = useRef<HTMLVideoElement | null>(null);
   const ambientVideoRef = useRef<HTMLVideoElement | null>(null);
-  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const [hasLiveVideoTrack, setHasLiveVideoTrack] = useState<boolean>(false);
   const [fitMode, setFitMode] = useState<'cover' | 'contain'>('contain');
 
@@ -70,14 +71,6 @@ export const RemoteVideoArea: React.FC<RemoteVideoAreaProps> = ({
         setHasLiveVideoTrack(true);
       }
 
-      // Dedicated audio element plays remote voice
-      if (remoteAudioRef.current) {
-        if (remoteAudioRef.current.srcObject !== remoteStream) {
-          remoteAudioRef.current.srcObject = remoteStream;
-        }
-        remoteAudioRef.current.play().catch((err) => console.warn('[RemoteVideoArea] Audio play notice:', err));
-      }
-
       const handleTrackChange = () => {
         const currentVTracks = remoteStream.getVideoTracks();
         if (currentVTracks.length > 0) {
@@ -117,9 +110,6 @@ export const RemoteVideoArea: React.FC<RemoteVideoAreaProps> = ({
 
   return (
     <div className="relative w-full h-full max-w-full max-h-full bg-zinc-950 flex flex-col justify-between overflow-hidden select-none">
-      {/* Hidden dedicated audio element to guarantee remote voice playback */}
-      <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
-
       {/* Ambient background blurred video layer (fills screen softly when in 'contain' mode) */}
       {showVideoFeed && fitMode === 'contain' && (
         <video
@@ -157,7 +147,19 @@ export const RemoteVideoArea: React.FC<RemoteVideoAreaProps> = ({
 
       {/* Top Overlay Header Bar */}
       <div className="relative z-20 flex items-center justify-between p-3 sm:p-6 bg-gradient-to-b from-black/85 via-black/45 to-transparent">
-        <div className="flex items-center gap-2.5 sm:gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {onMinimize && (
+            <button
+              type="button"
+              onClick={onMinimize}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 hover:bg-white/25 text-white backdrop-blur-md border border-white/20 transition-all active:scale-95 shadow-lg group mr-0.5 sm:mr-1"
+              title="Back to chat (minimize call)"
+            >
+              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 transition-transform group-hover:-translate-x-0.5 text-emerald-400" />
+              <span className="text-xs sm:text-sm font-semibold hidden sm:inline">Back</span>
+            </button>
+          )}
+
           <div className="p-1.5 sm:p-2 rounded-full bg-white/10 backdrop-blur-md border border-white/10 text-emerald-400">
             <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>

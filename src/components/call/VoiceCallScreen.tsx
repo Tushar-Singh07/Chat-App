@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShieldCheck, Lock } from 'lucide-react';
+import { ShieldCheck, Lock, ArrowLeft } from 'lucide-react';
 import type { User } from '../../types';
 import { Avatar } from '../Avatar';
 import { CallStatus } from './CallStatus';
@@ -20,6 +20,7 @@ interface VoiceCallScreenProps {
   onToggleMute?: () => void;
   isSpeakerOn?: boolean;
   onToggleSpeaker?: () => void;
+  onMinimize?: () => void;
   onEndCall?: () => void;
 }
 
@@ -34,6 +35,7 @@ export const VoiceCallScreen: React.FC<VoiceCallScreenProps> = ({
   onToggleMute,
   isSpeakerOn,
   onToggleSpeaker,
+  onMinimize,
   onEndCall: propOnEndCall,
 }) => {
   const { addToast } = useToast();
@@ -45,15 +47,6 @@ export const VoiceCallScreen: React.FC<VoiceCallScreenProps> = ({
   const seconds = propSeconds !== undefined ? propSeconds : internalSeconds;
 
   const peerPresence = peerUser ? getUserPresence(peerUser.id) : null;
-  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
-
-  // Attach real remote WebRTC stream to audio element
-  useEffect(() => {
-    if (remoteAudioRef.current && remoteStream) {
-      remoteAudioRef.current.srcObject = remoteStream;
-      remoteAudioRef.current.play().catch((err) => console.log('[VoiceCall] Audio play error:', err));
-    }
-  }, [remoteStream]);
 
   // Internal fallback timer if propSeconds is not controlled externally
   useEffect(() => {
@@ -86,12 +79,20 @@ export const VoiceCallScreen: React.FC<VoiceCallScreenProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-between bg-zinc-950 text-white p-4 sm:p-8 select-none animate-in fade-in duration-200 chat-bg-pattern w-full h-full h-[100dvh] max-w-full max-h-full overflow-hidden">
-      {/* Hidden Remote Audio Element for WebRTC MediaStream */}
-      <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
-
       {/* Top Header */}
       <div className="flex items-center justify-between text-xs text-zinc-400">
         <div className="flex items-center gap-2">
+          {onMinimize && (
+            <button
+              type="button"
+              onClick={onMinimize}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 hover:bg-white/25 text-white backdrop-blur-md border border-white/20 transition-all active:scale-95 shadow-md group mr-1"
+              title="Back to chat (minimize call)"
+            >
+              <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5 text-emerald-400" />
+              <span className="text-xs font-semibold hidden sm:inline">Back</span>
+            </button>
+          )}
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
           <span className="font-semibold text-zinc-200">SecureConnect Voice</span>
         </div>

@@ -28,6 +28,7 @@ export interface ActiveCallSession {
   isCameraOn: boolean;
   isSpeakerOn: boolean;
   facingMode?: 'user' | 'environment';
+  isMinimized?: boolean;
   seconds: number;
   conversationId?: string | null;
 }
@@ -71,6 +72,8 @@ interface AppContextType {
   toggleCameraCall: () => void;
   toggleSpeakerCall: () => void;
   switchCameraCall: () => Promise<void>;
+  minimizeCall: () => void;
+  maximizeCall: () => void;
 
   // Conversation Handlers
   togglePinConversation: (id: string) => void;
@@ -160,6 +163,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     isCameraOn: true,
     isSpeakerOn: true,
     facingMode: 'user',
+    isMinimized: false,
     seconds: 0,
     conversationId: null,
   });
@@ -331,6 +335,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isCameraOn: true,
       isSpeakerOn: true,
       facingMode: 'user',
+      isMinimized: false,
       seconds: 0,
       conversationId: null,
     });
@@ -870,6 +875,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           isCameraOn: true,
           isSpeakerOn: true,
           facingMode: 'user',
+          isMinimized: false,
           seconds: 0,
           conversationId: conversationId || null,
         });
@@ -953,6 +959,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isCameraOn: isVideo,
         isSpeakerOn: true,
         facingMode: 'user',
+        isMinimized: false,
         seconds: 0,
       });
 
@@ -1074,6 +1081,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
   }, [addToast]);
+
+  // Minimize Call to Floating Window
+  const minimizeCall = useCallback(() => {
+    setActiveCallSession((prev) => ({ ...prev, isMinimized: true }));
+    addToast({ type: 'info', title: 'Call minimized to floating window' });
+  }, [addToast]);
+
+  // Maximize Call back to Full Screen
+  const maximizeCall = useCallback(() => {
+    setActiveCallSession((prev) => ({ ...prev, isMinimized: false }));
+  }, []);
 
   // Legacy Call Handlers (for backward compatibility with existing components)
   const endVoiceCall = useCallback(
@@ -1315,6 +1333,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleCameraCall,
         toggleSpeakerCall,
         switchCameraCall,
+        minimizeCall,
+        maximizeCall,
         togglePinConversation,
         toggleMuteConversation,
         toggleArchiveConversation,

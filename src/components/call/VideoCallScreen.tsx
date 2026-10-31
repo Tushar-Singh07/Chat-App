@@ -23,6 +23,7 @@ interface VideoCallScreenProps {
   onToggleSpeaker?: () => void;
   facingMode?: 'user' | 'environment';
   onSwitchCamera?: () => void;
+  onMinimize?: () => void;
   onEndCall?: () => void;
 }
 
@@ -42,6 +43,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({
   onToggleSpeaker: propOnToggleSpeaker,
   facingMode = 'user',
   onSwitchCamera,
+  onMinimize,
   onEndCall: propOnEndCall,
 }) => {
   const { currentUser } = useApp();
@@ -137,6 +139,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({
         remoteVideoRef={remoteVideoRef}
         remoteStream={remoteStream}
         seconds={seconds}
+        onMinimize={onMinimize}
       />
 
       {/* ----------------- LOCAL VIDEO PREVIEW (CORNER OVERLAY) ----------------- */}

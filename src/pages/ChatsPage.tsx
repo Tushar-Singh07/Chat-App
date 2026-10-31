@@ -37,8 +37,6 @@ import { MediaPreview } from '../components/media/MediaPreview';
 import { ImageViewer, type ImageMediaItem } from '../components/media/ImageViewer';
 import { VoiceRecorder } from '../components/media/VoiceRecorder';
 import { ForwardModal } from '../components/ForwardModal';
-import { VoiceCallScreen } from '../components/call/VoiceCallScreen';
-import { VideoCallScreen } from '../components/call/VideoCallScreen';
 import { ChatPlaceholder } from './ChatPlaceholder';
 import { EmptyState } from '../components/EmptyState';
 import { useToast } from '../context/ToastContext';
