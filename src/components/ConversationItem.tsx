@@ -140,12 +140,13 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400 truncate flex-1">
             {isTyping ? (
-              <span className="text-emerald-600 dark:text-[#00a884] font-semibold flex items-center gap-1 animate-pulse">
+              <span className="text-emerald-600 dark:text-[#00a884] font-semibold flex items-center gap-1.5">
                 <span>typing</span>
-                <span className="flex gap-0.5">
-                  <span className="w-1 h-1 rounded-full bg-emerald-500 animate-bounce" />
-                  <span className="w-1 h-1 rounded-full bg-emerald-500 animate-bounce delay-100" />
-                  <span className="w-1 h-1 rounded-full bg-emerald-500 animate-bounce delay-200" />
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 typing-dot-1" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 typing-dot-2" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 typing-dot-3" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 typing-dot-4" />
                 </span>
               </span>
             ) : (

@@ -65,6 +65,7 @@ export const ChatsPage: React.FC = () => {
     toggleStarMessage,
     addReaction,
     typingUsers,
+    sendTypingSignal,
     activeCallUser,
     startVoiceCall,
     endVoiceCall,
@@ -253,12 +254,67 @@ export const ChatsPage: React.FC = () => {
     if (newId) handleSelectConversation(newId);
   };
 
-  // Submit Text / Voice Message
+  // Submit Text / Voice Message & Typing Debounce
   const isSendingRef = useRef(false);
+  const typingDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTypingActiveRef = useRef(false);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setMessageInput(val);
+
+    if (!currentConvId) return;
+
+    if (val.trim().length > 0) {
+      if (!isTypingActiveRef.current) {
+        isTypingActiveRef.current = true;
+        sendTypingSignal(currentConvId, true);
+      }
+
+      if (typingDebounceRef.current) {
+        clearTimeout(typingDebounceRef.current);
+      }
+
+      typingDebounceRef.current = setTimeout(() => {
+        isTypingActiveRef.current = false;
+        sendTypingSignal(currentConvId, false);
+      }, 2500);
+    } else {
+      if (isTypingActiveRef.current) {
+        isTypingActiveRef.current = false;
+        sendTypingSignal(currentConvId, false);
+      }
+      if (typingDebounceRef.current) {
+        clearTimeout(typingDebounceRef.current);
+      }
+    }
+  };
+
+  // Clean up typing status on switching chats or unmounting
+  useEffect(() => {
+    return () => {
+      if (typingDebounceRef.current) {
+        clearTimeout(typingDebounceRef.current);
+      }
+      if (isTypingActiveRef.current && currentConvId) {
+        isTypingActiveRef.current = false;
+        sendTypingSignal(currentConvId, false);
+      }
+    };
+  }, [currentConvId, sendTypingSignal]);
 
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!currentConvId || !messageInput.trim() || isSendingRef.current) return;
+
+    // Clear typing indicator immediately when message is sent
+    if (typingDebounceRef.current) {
+      clearTimeout(typingDebounceRef.current);
+    }
+    if (isTypingActiveRef.current) {
+      isTypingActiveRef.current = false;
+      sendTypingSignal(currentConvId, false);
+    }
 
     const textToSend = messageInput.trim();
     const replyId = replyTarget ? replyTarget.id : undefined;
@@ -559,12 +615,13 @@ export const ChatsPage: React.FC = () => {
                   </h2>
                   <p className="text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
                     {isTyping ? (
-                      <span className="text-emerald-500 dark:text-[#00a884] font-semibold animate-pulse flex items-center gap-1">
+                      <span className="text-emerald-500 dark:text-[#00a884] font-semibold flex items-center gap-1.5">
                         <span>{targetUser.name.split(' ')[0]} is typing</span>
-                        <span className="flex gap-0.5">
-                          <span className="w-1 h-1 rounded-full bg-emerald-500 animate-bounce" />
-                          <span className="w-1 h-1 rounded-full bg-emerald-500 animate-bounce delay-100" />
-                          <span className="w-1 h-1 rounded-full bg-emerald-500 animate-bounce delay-200" />
+                        <span className="flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 typing-dot-1" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 typing-dot-2" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 typing-dot-3" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 typing-dot-4" />
                         </span>
                       </span>
                     ) : targetPresence?.status === 'online' ? (
@@ -697,13 +754,25 @@ export const ChatsPage: React.FC = () => {
                 );
               })}
 
-              {/* Typing indicator bubble */}
-              {isTyping && (
-                <div className="flex items-center gap-2 text-xs text-zinc-400 py-1 animate-pulse">
-                  <div className="px-4 py-2.5 rounded-2xl rounded-tl-xs bg-white dark:bg-[#202c33] border border-zinc-200 dark:border-transparent flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-bounce" />
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-bounce delay-100" />
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-bounce delay-200" />
+              {/* WhatsApp-Style Floating Typing Indicator Bubble in Inbox */}
+              {isTyping && targetUser && (
+                <div className="flex items-end gap-2.5 my-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                  <Avatar
+                    src={targetUser.avatar}
+                    alt={targetUser.name}
+                    size="xs"
+                    className="w-7 h-7 mb-0.5 flex-shrink-0 border border-zinc-200 dark:border-zinc-700 shadow-2xs"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-[11px] font-semibold text-emerald-600 dark:text-[#00a884] ml-2 mb-1">
+                      {targetUser.name.split(' ')[0]} is typing...
+                    </span>
+                    <div className="px-4 py-3 rounded-2xl rounded-bl-xs bg-white dark:bg-[#202c33] border border-zinc-200/60 dark:border-white/5 shadow-sm flex items-center gap-1.5 w-fit">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 dark:bg-[#00a884] typing-dot-1 shadow-xs" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 dark:bg-[#00a884] typing-dot-2 shadow-xs" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 dark:bg-[#00a884] typing-dot-3 shadow-xs" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 dark:bg-[#00a884] typing-dot-4 shadow-xs" />
+                    </div>
                   </div>
                 </div>
               )}
@@ -794,7 +863,7 @@ export const ChatsPage: React.FC = () => {
                 <input
                   type="text"
                   value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
+                  onChange={handleInputChange}
                   placeholder="Type a message"
                   className="flex-1 px-4 py-2.5 text-sm bg-white dark:bg-[#2a3942] text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/50 border border-transparent transition-all"
                 />

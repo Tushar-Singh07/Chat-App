@@ -87,3 +87,36 @@ body {
   background: rgba(17, 27, 33, 0.85);
   backdrop-filter: blur(12px);
 }
+
+/* WhatsApp-style typing floating balls */
+@keyframes typingBounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  30% {
+    transform: translateY(-7px) scale(1.15);
+    opacity: 1;
+  }
+}
+
+.typing-dot-1 {
+  animation: typingBounce 1.4s infinite ease-in-out;
+  animation-delay: 0s;
+}
+
+.typing-dot-2 {
+  animation: typingBounce 1.4s infinite ease-in-out;
+  animation-delay: 0.18s;
+}
+
+.typing-dot-3 {
+  animation: typingBounce 1.4s infinite ease-in-out;
+  animation-delay: 0.36s;
+}
+
+.typing-dot-4 {
+  animation: typingBounce 1.4s infinite ease-in-out;
+  animation-delay: 0.54s;
+}
+

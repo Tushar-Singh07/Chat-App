@@ -537,11 +537,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     });
 
-    socketService.onUserTyping(({ conversationId }) => {
+    const typingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+
+    socketService.onUserTyping(({ conversationId, userId }) => {
+      if (userId && userId === authUser?.id) return;
       setTypingUsers((prev) => ({ ...prev, [conversationId]: true }));
+
+      const existingTimer = typingTimeouts.get(conversationId);
+      if (existingTimer) clearTimeout(existingTimer);
+
+      const timer = setTimeout(() => {
+        setTypingUsers((prev) => ({ ...prev, [conversationId]: false }));
+        typingTimeouts.delete(conversationId);
+      }, 3500);
+      typingTimeouts.set(conversationId, timer);
     });
 
-    socketService.onUserStopTyping(({ conversationId }) => {
+    socketService.onUserStopTyping(({ conversationId, userId }) => {
+      if (userId && userId === authUser?.id) return;
+      const existingTimer = typingTimeouts.get(conversationId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        typingTimeouts.delete(conversationId);
+      }
       setTypingUsers((prev) => ({ ...prev, [conversationId]: false }));
     });
 

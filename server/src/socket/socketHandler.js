@@ -140,13 +140,41 @@ export const setupSocketIO = (io) => {
       if (conversationId) socket.leave(conversationId);
     });
 
-    // Typing indicators
-    socket.on('typing', ({ conversationId }) => {
+    // Typing indicators - broadcast to conversation room and other participants' user rooms
+    socket.on('typing', async ({ conversationId }) => {
+      if (!conversationId) return;
       socket.to(conversationId).emit('user_typing', { conversationId, userId });
+      try {
+        const conv = await Conversation.findById(conversationId);
+        if (conv && conv.participants) {
+          for (const p of conv.participants) {
+            const pId = p.toString();
+            if (pId !== userId) {
+              io.to(`user:${pId}`).emit('user_typing', { conversationId, userId });
+            }
+          }
+        }
+      } catch (err) {
+        // ignore
+      }
     });
 
-    socket.on('stop_typing', ({ conversationId }) => {
+    socket.on('stop_typing', async ({ conversationId }) => {
+      if (!conversationId) return;
       socket.to(conversationId).emit('user_stop_typing', { conversationId, userId });
+      try {
+        const conv = await Conversation.findById(conversationId);
+        if (conv && conv.participants) {
+          for (const p of conv.participants) {
+            const pId = p.toString();
+            if (pId !== userId) {
+              io.to(`user:${pId}`).emit('user_stop_typing', { conversationId, userId });
+            }
+          }
+        }
+      } catch (err) {
+        // ignore
+      }
     });
 
     // Real-Time Messages
