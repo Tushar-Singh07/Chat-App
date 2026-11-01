@@ -240,6 +240,70 @@ export const setupSocketIO = (io) => {
       }
     });
 
+    // Real-Time Chat Cleared Socket Relay
+    socket.on('clear_chat', async ({ conversationId }) => {
+      if (!conversationId) return;
+      try {
+        const conv = await Conversation.findById(conversationId);
+        if (conv && conv.participants) {
+          for (const p of conv.participants) {
+            io.to(`user:${p.toString()}`).emit('chat_cleared', { conversationId });
+          }
+          io.to(conversationId.toString()).emit('chat_cleared', { conversationId });
+        }
+      } catch (err) {
+        console.error('Socket clear_chat error:', err);
+      }
+    });
+
+    // Real-Time Message Deleted Socket Relay
+    socket.on('delete_message', async ({ messageId, conversationId }) => {
+      if (!conversationId || !messageId) return;
+      try {
+        const conv = await Conversation.findById(conversationId);
+        if (conv && conv.participants) {
+          for (const p of conv.participants) {
+            io.to(`user:${p.toString()}`).emit('message_deleted', { messageId, conversationId });
+          }
+          io.to(conversationId.toString()).emit('message_deleted', { messageId, conversationId });
+        }
+      } catch (err) {
+        console.error('Socket delete_message error:', err);
+      }
+    });
+
+    // Real-Time Message Edited Socket Relay
+    socket.on('edit_message', async (message) => {
+      if (!message || !message.conversationId) return;
+      try {
+        const conv = await Conversation.findById(message.conversationId);
+        if (conv && conv.participants) {
+          for (const p of conv.participants) {
+            io.to(`user:${p.toString()}`).emit('message_edited', message);
+          }
+          io.to(message.conversationId.toString()).emit('message_edited', message);
+        }
+      } catch (err) {
+        console.error('Socket edit_message error:', err);
+      }
+    });
+
+    // Real-Time Message Pinned Socket Relay
+    socket.on('pin_message', async ({ messageId, conversationId, isPinned, message }) => {
+      if (!conversationId || !messageId) return;
+      try {
+        const conv = await Conversation.findById(conversationId);
+        if (conv && conv.participants) {
+          for (const p of conv.participants) {
+            io.to(`user:${p.toString()}`).emit('message_pinned', { messageId, conversationId, isPinned, message });
+          }
+          io.to(conversationId.toString()).emit('message_pinned', { messageId, conversationId, isPinned, message });
+        }
+      } catch (err) {
+        console.error('Socket pin_message error:', err);
+      }
+    });
+
     // ==========================================
     // WebRTC Signaling Events
     // ==========================================

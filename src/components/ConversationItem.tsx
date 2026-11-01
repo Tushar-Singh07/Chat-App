@@ -39,6 +39,7 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
     toggleMuteConversation,
     toggleArchiveConversation,
     deleteConversation,
+    clearChat,
     markAsRead,
     getUserPresence,
     typingUsers,
@@ -289,6 +290,24 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
           </button>
 
           <div className="my-1 border-t border-zinc-200 dark:border-[#222d34]" />
+
+          {/* Clear Messages */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              clearChat(conversation.id);
+              setIsContextMenuOpen(false);
+              addToast({
+                type: 'warning',
+                title: 'Chat Cleared',
+                description: `Cleared messages with ${partner.name}`,
+              });
+            }}
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors"
+          >
+            <Trash2 className="w-4 h-4 text-amber-600" />
+            Clear Messages
+          </button>
 
           {/* Delete Conversation */}
           <button

@@ -1,6 +1,7 @@
 import Conversation from '../models/Conversation.js';
 import User from '../models/User.js';
 import Message from '../models/Message.js';
+import { getIO } from '../socket/socketHandler.js';
 
 // Get all conversations for current user
 export const getConversations = async (req, res, next) => {
@@ -159,6 +160,43 @@ export const deleteConversation = async (req, res, next) => {
     await Message.deleteMany({ conversationId: id });
 
     res.status(200).json({ success: true, message: 'Conversation deleted successfully' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Clear all messages in a conversation (Clear Chat)
+export const clearConversationMessages = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+
+    const conversation = await Conversation.findById(id);
+    if (!conversation) {
+      return res.status(404).json({ success: false, message: 'Conversation not found' });
+    }
+
+    if (!conversation.participants.some((p) => p.toString() === userId.toString())) {
+      return res.status(403).json({ success: false, message: 'Not authorized to clear this chat' });
+    }
+
+    await Message.deleteMany({ conversationId: id });
+
+    conversation.lastMessage = null;
+    if (conversation.unreadCounts) {
+      conversation.unreadCounts = new Map();
+    }
+    await conversation.save();
+
+    const io = getIO();
+    if (io && conversation.participants) {
+      for (const p of conversation.participants) {
+        io.to(`user:${p.toString()}`).emit('chat_cleared', { conversationId: id.toString() });
+      }
+      io.to(id.toString()).emit('chat_cleared', { conversationId: id.toString() });
+    }
+
+    res.status(200).json({ success: true, message: 'Chat messages cleared successfully' });
   } catch (error) {
     next(error);
   }

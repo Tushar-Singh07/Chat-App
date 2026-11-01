@@ -7,6 +7,7 @@ import {
   toggleMute,
   toggleArchive,
   deleteConversation,
+  clearConversationMessages,
 } from '../controllers/conversationController.js';
 import { authenticateUser } from '../middleware/authMiddleware.js';
 
@@ -21,6 +22,8 @@ router.post('/direct', createConversation);
 router.patch('/:id/pin', togglePin);
 router.patch('/:id/mute', toggleMute);
 router.patch('/:id/archive', toggleArchive);
+router.delete('/:id/messages', clearConversationMessages);
+router.post('/:id/clear', clearConversationMessages);
 router.delete('/:id', deleteConversation);
 
 export default router;

@@ -112,6 +112,38 @@ class SocketService {
     this.socket?.off('messages_read');
   }
 
+  onChatCleared(callback: (data: { conversationId: string }) => void) {
+    this.socket?.on('chat_cleared', callback);
+  }
+
+  offChatCleared() {
+    this.socket?.off('chat_cleared');
+  }
+
+  onMessageDeleted(callback: (data: { messageId: string; conversationId: string }) => void) {
+    this.socket?.on('message_deleted', callback);
+  }
+
+  offMessageDeleted() {
+    this.socket?.off('message_deleted');
+  }
+
+  onMessageEdited(callback: (message: any) => void) {
+    this.socket?.on('message_edited', callback);
+  }
+
+  offMessageEdited() {
+    this.socket?.off('message_edited');
+  }
+
+  onMessagePinned(callback: (data: { messageId: string; conversationId: string; isPinned: boolean; message: any }) => void) {
+    this.socket?.on('message_pinned', callback);
+  }
+
+  offMessagePinned() {
+    this.socket?.off('message_pinned');
+  }
+
   // ===============================================
   // WebRTC Call Signaling Methods
   // ===============================================

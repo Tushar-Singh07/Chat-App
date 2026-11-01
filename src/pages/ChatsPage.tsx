@@ -22,6 +22,8 @@ import {
   Trash2,
   Lock,
   Loader2,
+  Pin,
+  Pencil,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { userService } from '../services/userService';
@@ -62,7 +64,10 @@ export const ChatsPage: React.FC = () => {
     createConversation,
     sendMessage,
     deleteMessage,
+    editMessage,
+    togglePinMessage,
     toggleStarMessage,
+    clearChat,
     addReaction,
     typingUsers,
     sendTypingSignal,
@@ -119,6 +124,10 @@ export const ChatsPage: React.FC = () => {
   const [messageInput, setMessageInput] = useState('');
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
   const [forwardTargetMessage, setForwardTargetMessage] = useState<Message | null>(null);
+  const [isClearChatModalOpen, setIsClearChatModalOpen] = useState(false);
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [editContent, setEditContent] = useState('');
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
@@ -214,6 +223,47 @@ export const ChatsPage: React.FC = () => {
       }, 2000);
     } else {
       addToast({ type: 'info', title: 'Original message not found in feed' });
+    }
+  };
+
+  // Pinned messages in current conversation
+  const pinnedMessages = rawMessages.filter((m) => m.isPinned);
+  const latestPinnedMessage = pinnedMessages[pinnedMessages.length - 1];
+
+  // Clear chat handler
+  const handleConfirmClearChat = async () => {
+    if (!currentConvId) return;
+    try {
+      await clearChat(currentConvId);
+      setIsClearChatModalOpen(false);
+      addToast({ type: 'success', title: 'Chat cleared successfully' });
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'Failed to clear chat', description: err.message });
+    }
+  };
+
+  // Edit message save handler
+  const handleSaveEditMessage = async () => {
+    if (!currentConvId || !editingMessage || !editContent.trim()) return;
+    try {
+      await editMessage(currentConvId, editingMessage.id, editContent.trim());
+      setEditingMessage(null);
+      setEditContent('');
+      addToast({ type: 'success', title: 'Message edited successfully' });
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'Failed to edit message', description: err.message });
+    }
+  };
+
+  // Delete message handler
+  const handleConfirmDeleteMessage = async () => {
+    if (!currentConvId || !deletingMessageId) return;
+    try {
+      await deleteMessage(currentConvId, deletingMessageId);
+      setDeletingMessageId(null);
+      addToast({ type: 'success', title: 'Message deleted' });
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'Failed to delete message', description: err.message });
     }
   };
 
@@ -678,11 +728,45 @@ export const ChatsPage: React.FC = () => {
                   items={[
                     { id: '1', label: 'Contact Info', onClick: () => navigate('/profile') },
                     { id: '2', label: 'Mute Notifications', icon: <VolumeX className="w-4 h-4" />, onClick: () => addToast({ type: 'info', title: 'Notifications muted' }) },
-                    { id: '3', label: 'Clear Messages', icon: <Trash2 className="w-4 h-4" />, onClick: () => addToast({ type: 'warning', title: 'Messages cleared (mock)' }) },
+                    {
+                      id: '3',
+                      label: 'Clear Chat',
+                      icon: <Trash2 className="w-4 h-4 text-rose-500" />,
+                      onClick: () => setIsClearChatModalOpen(true),
+                    },
                   ]}
                 />
               </div>
             </div>
+
+            {/* Pinned Message Banner */}
+            {latestPinnedMessage && (
+              <div className="px-4 py-2 bg-emerald-50/90 dark:bg-[#182229] border-b border-emerald-200/50 dark:border-[#222d34] flex items-center justify-between text-xs z-10 animate-in slide-in-from-top-1 duration-150 shadow-2xs">
+                <div
+                  onClick={() => handleScrollToMessage(latestPinnedMessage.id)}
+                  className="flex items-center gap-2 cursor-pointer flex-1 min-w-0 hover:opacity-85 transition-opacity"
+                  title="Click to view pinned message"
+                >
+                  <Pin className="w-4 h-4 text-emerald-600 dark:text-[#00a884] flex-shrink-0" />
+                  <div className="truncate">
+                    <span className="font-semibold text-emerald-700 dark:text-[#00a884] mr-2">
+                      Pinned Message{pinnedMessages.length > 1 ? ` (${pinnedMessages.length})` : ''}:
+                    </span>
+                    <span className="text-zinc-700 dark:text-zinc-300">
+                      {latestPinnedMessage.content || 'Attachment'}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => currentConvId && togglePinMessage(currentConvId, latestPinnedMessage.id)}
+                  className="p-1 text-zinc-400 hover:text-rose-500 transition-colors ml-2"
+                  title="Unpin message"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
 
             {/* In-Chat Search Bar Drawer */}
             {isSearchingInChat && (
@@ -743,8 +827,23 @@ export const ChatsPage: React.FC = () => {
                       currentUserId={currentUser.id}
                       onReply={(m) => setReplyTarget(m)}
                       onForward={(m) => setForwardTargetMessage(m)}
-                      onDelete={(id) => currentConvId && deleteMessage(currentConvId, id)}
-                      onStar={(id) => currentConvId && toggleStarMessage(currentConvId, id)}
+                      onEdit={(m) => {
+                        setEditingMessage(m);
+                        setEditContent(m.content);
+                      }}
+                      onPin={(id) => {
+                        if (currentConvId) {
+                          togglePinMessage(currentConvId, id);
+                          addToast({ type: 'info', title: 'Message pin status updated' });
+                        }
+                      }}
+                      onDelete={(id) => setDeletingMessageId(id)}
+                      onStar={(id) => {
+                        if (currentConvId) {
+                          toggleStarMessage(currentConvId, id);
+                          addToast({ type: 'info', title: 'Message star status updated' });
+                        }
+                      }}
                       onReact={(id, emoji) => currentConvId && addReaction(currentConvId, id, emoji)}
                       onImageClick={handleOpenImageViewer}
                       onScrollToMessage={handleScrollToMessage}
@@ -990,6 +1089,111 @@ export const ChatsPage: React.FC = () => {
         message={forwardTargetMessage}
         onClose={() => setForwardTargetMessage(null)}
       />
+
+      {/* Clear Chat Confirmation Modal */}
+      <Modal
+        isOpen={isClearChatModalOpen}
+        onClose={() => setIsClearChatModalOpen(false)}
+        title="Clear Chat?"
+        description="All messages in this chat will be permanently deleted."
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setIsClearChatModalOpen(false)}
+              className="px-4 py-2 text-sm font-medium rounded-xl border border-zinc-200 dark:border-[#222d34] text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-[#202c33] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmClearChat}
+              className="px-4 py-2 text-sm font-semibold rounded-xl bg-rose-600 hover:bg-rose-700 text-white transition-colors"
+            >
+              Clear Chat
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-zinc-600 dark:text-zinc-300">
+          Are you sure you want to clear this entire conversation? Messages will be removed for both you and your chat partner.
+        </p>
+      </Modal>
+
+      {/* Edit Message Modal */}
+      <Modal
+        isOpen={!!editingMessage}
+        onClose={() => setEditingMessage(null)}
+        title="Edit Message"
+        description="Make changes to your message"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setEditingMessage(null)}
+              className="px-4 py-2 text-sm font-medium rounded-xl border border-zinc-200 dark:border-[#222d34] text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-[#202c33] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!editContent.trim()}
+              onClick={handleSaveEditMessage}
+              className="px-4 py-2 text-sm font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white transition-colors flex items-center gap-1.5"
+            >
+              Save Changes
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <textarea
+            value={editContent}
+            onChange={(e) => setEditContent(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSaveEditMessage();
+              }
+            }}
+            placeholder="Edit your message..."
+            rows={4}
+            className="w-full p-3 rounded-xl border border-zinc-200 dark:border-[#222d34] bg-zinc-50 dark:bg-[#111b21] text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none text-sm"
+            autoFocus
+          />
+          <p className="text-[11px] text-zinc-400">Press Enter to save, Shift+Enter for a new line</p>
+        </div>
+      </Modal>
+
+      {/* Delete Message Confirmation Modal */}
+      <Modal
+        isOpen={!!deletingMessageId}
+        onClose={() => setDeletingMessageId(null)}
+        title="Delete Message?"
+        description="This message will be removed from the conversation."
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setDeletingMessageId(null)}
+              className="px-4 py-2 text-sm font-medium rounded-xl border border-zinc-200 dark:border-[#222d34] text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-[#202c33] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmDeleteMessage}
+              className="px-4 py-2 text-sm font-semibold rounded-xl bg-rose-600 hover:bg-rose-700 text-white transition-colors"
+            >
+              Delete
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-zinc-600 dark:text-zinc-300">
+          Are you sure you want to delete this message? This action cannot be undone.
+        </p>
+      </Modal>
     </div>
   );
 };

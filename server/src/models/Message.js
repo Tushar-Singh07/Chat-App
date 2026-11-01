@@ -46,6 +46,17 @@ const messageSchema = new mongoose.Schema(
         ref: 'User',
       },
     ],
+    isPinned: {
+      type: Boolean,
+      default: false,
+    },
+    isEdited: {
+      type: Boolean,
+      default: false,
+    },
+    editedAt: {
+      type: Date,
+    },
     callSummary: {
       type: { type: String },
       duration: String,

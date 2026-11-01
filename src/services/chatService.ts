@@ -30,6 +30,10 @@ export const chatService = {
     return await apiFetch(`/conversations/${id}`, { method: 'DELETE' });
   },
 
+  async clearChat(id: string) {
+    return await apiFetch(`/conversations/${id}/messages`, { method: 'DELETE' });
+  },
+
   // Messages
   async getMessages(conversationId: string) {
     return await apiFetch<Message[]>(`/messages/${conversationId}`);
@@ -50,6 +54,21 @@ export const chatService = {
 
   async deleteMessage(id: string) {
     return await apiFetch(`/messages/${id}`, { method: 'DELETE' });
+  },
+
+  async editMessage(id: string, content: string) {
+    return await apiFetch<Message>(`/messages/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content }),
+    });
+  },
+
+  async toggleStarMessage(id: string) {
+    return await apiFetch<Message>(`/messages/${id}/star`, { method: 'PATCH' });
+  },
+
+  async togglePinMessage(id: string) {
+    return await apiFetch<Message>(`/messages/${id}/pin`, { method: 'PATCH' });
   },
 
   async reactToMessage(id: string, emoji: string) {

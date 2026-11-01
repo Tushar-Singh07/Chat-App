@@ -80,6 +80,7 @@ interface AppContextType {
   toggleMuteConversation: (id: string) => void;
   toggleArchiveConversation: (id: string) => void;
   deleteConversation: (id: string) => void;
+  clearChat: (id: string) => Promise<void>;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
   createConversation: (targetUserId: string) => Promise<string>;
@@ -96,7 +97,9 @@ interface AppContextType {
     attachments?: MediaAttachment[]
   ) => Promise<void>;
   deleteMessage: (conversationId: string, messageId: string) => Promise<void>;
-  toggleStarMessage: (conversationId: string, messageId: string) => void;
+  editMessage: (conversationId: string, messageId: string, content: string) => Promise<void>;
+  togglePinMessage: (conversationId: string, messageId: string) => Promise<void>;
+  toggleStarMessage: (conversationId: string, messageId: string) => Promise<void>;
   addReaction: (conversationId: string, messageId: string, emoji: string) => Promise<void>;
   forwardMessage: (targetConversationId: string, message: Message) => Promise<void>;
   sendTypingSignal: (conversationId: string, isTyping: boolean) => void;
@@ -273,6 +276,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const dateObj = new Date(m.createdAt || Date.now());
     const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+    const isStarred = Boolean(
+      m.isStarred ||
+      (m.starredBy &&
+        Array.isArray(m.starredBy) &&
+        m.starredBy.some(
+          (u: any) => (u?.id || u?._id || u)?.toString() === currentUser.id.toString()
+        ))
+    );
+
     return {
       id: m.id || m._id,
       conversationId: m.conversationId,
@@ -283,6 +295,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: m.status || 'sent',
       replyToMessageId: m.replyTo?.id || m.replyTo?._id || m.replyTo,
       attachments: m.attachments,
+      isStarred,
+      isPinned: Boolean(m.isPinned),
+      isEdited: Boolean(m.isEdited),
+      editedAt: m.editedAt,
       reactions: (m.reactions || []).map((r: any) => ({
         id: r.id || r._id || `${r.userId}-${r.emoji}`,
         userId: r.userId?.id || r.userId?._id || r.userId,
@@ -537,6 +553,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     });
 
+    // Real-Time Chat Cleared Listener
+    socketService.onChatCleared(({ conversationId }) => {
+      setMessages((prev) => ({
+        ...prev,
+        [conversationId]: [],
+      }));
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === conversationId ? { ...c, lastMessage: undefined, unreadCount: 0 } : c
+        )
+      );
+    });
+
+    // Real-Time Message Deleted Listener
+    socketService.onMessageDeleted(({ messageId, conversationId }) => {
+      setMessages((prev) => ({
+        ...prev,
+        [conversationId]: (prev[conversationId] || []).filter((m) => m.id !== messageId),
+      }));
+      setConversations((prev) =>
+        prev.map((c) => {
+          if (c.id === conversationId && c.lastMessage?.id === messageId) {
+            const remaining = (messages[conversationId] || []).filter((m) => m.id !== messageId);
+            const latest = remaining[remaining.length - 1];
+            return { ...c, lastMessage: latest };
+          }
+          return c;
+        })
+      );
+    });
+
+    // Real-Time Message Edited Listener
+    socketService.onMessageEdited((updatedMsg) => {
+      const norm = normalizeMessage(updatedMsg);
+      setMessages((prev) => ({
+        ...prev,
+        [norm.conversationId]: (prev[norm.conversationId] || []).map((m) =>
+          m.id === norm.id ? norm : m
+        ),
+      }));
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === norm.conversationId && c.lastMessage?.id === norm.id
+            ? { ...c, lastMessage: norm }
+            : c
+        )
+      );
+    });
+
+    // Real-Time Message Pinned Listener
+    socketService.onMessagePinned(({ messageId, conversationId, isPinned }) => {
+      setMessages((prev) => ({
+        ...prev,
+        [conversationId]: (prev[conversationId] || []).map((m) =>
+          m.id === messageId ? { ...m, isPinned } : m
+        ),
+      }));
+    });
+
     const typingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
     socketService.onUserTyping(({ conversationId, userId }) => {
@@ -696,6 +771,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       socketService.offReceiveMessage();
       socketService.offMessagesDelivered();
       socketService.offMessagesRead();
+      socketService.offChatCleared();
+      socketService.offMessageDeleted();
+      socketService.offMessageEdited();
+      socketService.offMessagePinned();
       socketService.offCallEvents();
       socketService.disconnect();
     };
@@ -1205,6 +1284,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await chatService.deleteConversation(id);
   }, [activeConversationId]);
 
+  const clearChat = useCallback(async (id: string) => {
+    setMessages((prev) => ({
+      ...prev,
+      [id]: [],
+    }));
+    setConversations((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, lastMessage: undefined, unreadCount: 0 } : c))
+    );
+    await chatService.clearChat(id);
+  }, []);
+
   const markAsRead = useCallback(async (id: string) => {
     if (!id) return;
     setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
@@ -1277,21 +1367,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   const deleteMessage = useCallback(async (conversationId: string, messageId: string) => {
-    setMessages((prev) => ({
-      ...prev,
-      [conversationId]: (prev[conversationId] || []).filter((m) => m.id !== messageId),
-    }));
+    setMessages((prev) => {
+      const remaining = (prev[conversationId] || []).filter((m) => m.id !== messageId);
+      return {
+        ...prev,
+        [conversationId]: remaining,
+      };
+    });
+    setConversations((prev) =>
+      prev.map((c) => {
+        if (c.id === conversationId && c.lastMessage?.id === messageId) {
+          const remaining = (messages[conversationId] || []).filter((m) => m.id !== messageId);
+          const latest = remaining[remaining.length - 1];
+          return { ...c, lastMessage: latest };
+        }
+        return c;
+      })
+    );
     await chatService.deleteMessage(messageId);
-  }, []);
+  }, [messages]);
 
-  const toggleStarMessage = useCallback((conversationId: string, messageId: string) => {
-    setMessages((prev) => ({
-      ...prev,
-      [conversationId]: (prev[conversationId] || []).map((m) =>
-        m.id === messageId ? { ...m, isStarred: !m.isStarred } : m
-      ),
-    }));
-  }, []);
+  const editMessage = useCallback(
+    async (conversationId: string, messageId: string, content: string) => {
+      setMessages((prev) => ({
+        ...prev,
+        [conversationId]: (prev[conversationId] || []).map((m) =>
+          m.id === messageId ? { ...m, content, isEdited: true } : m
+        ),
+      }));
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === conversationId && c.lastMessage?.id === messageId
+            ? { ...c, lastMessage: { ...c.lastMessage, content, isEdited: true } }
+            : c
+        )
+      );
+      const res = await chatService.editMessage(messageId, content);
+      if (res.success && res.data) {
+        const norm = normalizeMessage(res.data);
+        setMessages((prev) => ({
+          ...prev,
+          [conversationId]: (prev[conversationId] || []).map((m) =>
+            m.id === messageId ? norm : m
+          ),
+        }));
+      }
+    },
+    [normalizeMessage]
+  );
+
+  const togglePinMessage = useCallback(
+    async (conversationId: string, messageId: string) => {
+      setMessages((prev) => ({
+        ...prev,
+        [conversationId]: (prev[conversationId] || []).map((m) =>
+          m.id === messageId ? { ...m, isPinned: !m.isPinned } : m
+        ),
+      }));
+      await chatService.togglePinMessage(messageId);
+    },
+    []
+  );
+
+  const toggleStarMessage = useCallback(
+    async (conversationId: string, messageId: string) => {
+      setMessages((prev) => ({
+        ...prev,
+        [conversationId]: (prev[conversationId] || []).map((m) =>
+          m.id === messageId ? { ...m, isStarred: !m.isStarred } : m
+        ),
+      }));
+      await chatService.toggleStarMessage(messageId);
+    },
+    []
+  );
 
   const addReaction = useCallback(async (conversationId: string, messageId: string, emoji: string) => {
     const res = await chatService.reactToMessage(messageId, emoji);
@@ -1357,6 +1506,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleMuteConversation,
         toggleArchiveConversation,
         deleteConversation,
+        clearChat,
         markAsRead,
         markAllAsRead,
         createConversation,
@@ -1364,6 +1514,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         markStatusAsViewed,
         sendMessage,
         deleteMessage,
+        editMessage,
+        togglePinMessage,
         toggleStarMessage,
         addReaction,
         forwardMessage,

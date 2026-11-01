@@ -54,6 +54,9 @@ export interface Message {
   replyToMessageId?: string;
   attachments?: MediaAttachment[];
   isStarred?: boolean;
+  isPinned?: boolean;
+  isEdited?: boolean;
+  editedAt?: string;
   isSystem?: boolean;
   callSummary?: {
     type: 'voice' | 'video';
