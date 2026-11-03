@@ -13,6 +13,8 @@ import {
   MailOpen,
   Camera,
   FileText,
+  Phone,
+  Video,
 } from 'lucide-react';
 import type { Conversation } from '../types';
 import { Avatar } from './Avatar';
@@ -166,9 +168,23 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
                   </span>
                 )}
 
-                <p className="truncate leading-tight">
-                  {lastMsg?.content || 'No messages yet'}
-                </p>
+                {/* Call Indicator or Regular Message Text */}
+                {lastMsg?.callSummary?.type ? (
+                  <span className="flex items-center gap-1 truncate text-zinc-600 dark:text-zinc-300">
+                    {lastMsg.callSummary.type === 'video' ? (
+                      <Video className="w-3.5 h-3.5 flex-shrink-0 text-emerald-500" />
+                    ) : (
+                      <Phone className="w-3.5 h-3.5 flex-shrink-0 text-emerald-500" />
+                    )}
+                    <span className="truncate leading-tight">
+                      {lastMsg.content || `${lastMsg.callSummary.type === 'video' ? 'Video' : 'Voice'} call`}
+                    </span>
+                  </span>
+                ) : (
+                  <p className="truncate leading-tight">
+                    {lastMsg?.content || 'No messages yet'}
+                  </p>
+                )}
               </>
             )}
           </div>

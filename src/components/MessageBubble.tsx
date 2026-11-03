@@ -173,7 +173,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     });
   }
 
-  const canEdit = isMe && !message.callSummary && Boolean(message.content?.trim());
+  const isCallMessage = Boolean(
+    message.callSummary &&
+    (message.callSummary.type === 'voice' || message.callSummary.type === 'video')
+  );
+
+  const canEdit = isMe && !isCallMessage && Boolean(message.content?.trim());
 
   return (
     <div
@@ -334,10 +339,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         </button>
 
         {/* Call Summary Card */}
-        {message.callSummary && (
+        {isCallMessage && message.callSummary && (
           <div
             className={cn(
-              'flex items-center gap-3 p-2.5 rounded-xl border mb-1 select-none',
+              'flex items-center gap-3 p-2.5 rounded-xl border mb-1 select-none min-w-[200px]',
               message.callSummary.status === 'started'
                 ? 'bg-blue-500/10 dark:bg-blue-500/20 border-blue-500/20 text-blue-700 dark:text-blue-300'
                 : message.callSummary.duration === '00:00' ||
@@ -380,12 +385,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             <div>
               <p className="text-xs font-bold capitalize">
                 {message.callSummary.status === 'started'
-                  ? `${message.callSummary.type} Call Started`
+                  ? `${message.callSummary.type || 'Voice'} Call Started`
                   : message.callSummary.duration === '00:00' ||
                     message.content?.toLowerCase().includes('missed') ||
                     message.content?.toLowerCase().includes('declined')
-                  ? message.content || `Missed ${message.callSummary.type} Call`
-                  : `${message.callSummary.type} Call Ended`}
+                  ? message.content || `Missed ${message.callSummary.type || 'Voice'} Call`
+                  : `${message.callSummary.type || 'Voice'} Call Ended`}
               </p>
               <p className="text-[11px] opacity-75">
                 {message.callSummary.status === 'started'
@@ -432,7 +437,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         )}
 
         {/* Message Content */}
-        {message.content && !message.callSummary && (
+        {message.content && !isCallMessage && (
           <p className="whitespace-pre-wrap leading-relaxed select-text pr-4">{message.content}</p>
         )}
 

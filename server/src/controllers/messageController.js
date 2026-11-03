@@ -72,7 +72,7 @@ export const sendMessage = async (req, res, next) => {
       content: content || '',
       attachments: attachments || [],
       replyTo: replyToMessageId || undefined,
-      callSummary: callSummary || undefined,
+      callSummary: (callSummary && callSummary.type) ? callSummary : undefined,
       status: initialStatus,
     });
 

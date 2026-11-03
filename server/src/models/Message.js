@@ -58,10 +58,16 @@ const messageSchema = new mongoose.Schema(
       type: Date,
     },
     callSummary: {
-      type: { type: String },
-      duration: String,
-      status: { type: String, default: 'ended' }, // 'started' | 'ended' | 'missed' | 'rejected'
-      callId: { type: String },
+      type: new mongoose.Schema(
+        {
+          type: { type: String }, // 'voice' | 'video'
+          duration: String,
+          status: { type: String }, // 'started' | 'ended' | 'missed' | 'rejected'
+          callId: { type: String },
+        },
+        { _id: false }
+      ),
+      default: undefined,
     },
   },
   {
@@ -77,6 +83,10 @@ messageSchema.index(
 messageSchema.methods.toJSON = function () {
   const obj = this.toObject();
   obj.id = obj._id.toString();
+  // Ensure non-call messages never serialize a partial callSummary object
+  if (obj.callSummary && !obj.callSummary.type) {
+    delete obj.callSummary;
+  }
   return obj;
 };
 

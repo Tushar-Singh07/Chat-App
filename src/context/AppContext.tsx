@@ -263,7 +263,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           date: 'Today',
           status: m.status || 'sent',
           attachments: m.attachments,
-          callSummary: m.callSummary,
+          callSummary: m.callSummary && m.callSummary.type ? m.callSummary : undefined,
         };
       }
 
@@ -318,7 +318,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         emoji: r.emoji,
         timestamp: 'Just now',
       })),
-      callSummary: m.callSummary,
+      callSummary: m.callSummary && m.callSummary.type ? m.callSummary : undefined,
     };
   };
 
