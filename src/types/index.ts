@@ -61,6 +61,8 @@ export interface Message {
   callSummary?: {
     type: 'voice' | 'video';
     duration: string;
+    status?: 'started' | 'ended' | 'missed' | 'rejected' | 'declined';
+    callId?: string;
   };
 }
 

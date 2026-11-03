@@ -15,6 +15,7 @@ export interface IncomingCallData {
   caller: User;
   type: 'voice' | 'video';
   offer: any;
+  conversationId?: string;
 }
 
 export interface ActiveCallSession {
@@ -174,6 +175,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const webrtcRef = useRef<WebRTCService | null>(null);
   const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const earlyIceCandidatesRef = useRef<{ callId?: string; candidate: RTCIceCandidateInit }[]>([]);
+  const activeCallSessionRef = useRef<ActiveCallSession>(activeCallSession);
+  useEffect(() => {
+    activeCallSessionRef.current = activeCallSession;
+  }, [activeCallSession]);
+
+  const incomingCallDataRef = useRef<IncomingCallData | null>(incomingCallData);
+  useEffect(() => {
+    incomingCallDataRef.current = incomingCallData;
+  }, [incomingCallData]);
+
+  const loggedCallEventsRef = useRef<Set<string>>(new Set());
 
   // Theme Sync across HTML root, colorScheme, and localStorage
   useEffect(() => {
@@ -329,6 +341,89 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [currentUser, users]
   );
 
+  const createConversation = useCallback(
+    async (targetUserId: string): Promise<string> => {
+      const res = await chatService.createConversation(targetUserId);
+      if (res.success && res.data) {
+        const norm = normalizeConversation(res.data);
+        setConversations((prev) => {
+          const exists = prev.some((c) => c.id === norm.id);
+          return exists ? prev : [norm, ...prev];
+        });
+        setActiveConversationId(norm.id);
+        return norm.id;
+      }
+      return '';
+    },
+    [normalizeConversation]
+  );
+
+  const ensureConversation = useCallback(
+    async (peerUserId: string): Promise<string> => {
+      if (!peerUserId) return '';
+      const existing = conversations.find(
+        (c) => c.participantIds.includes(peerUserId) && c.participantIds.includes(currentUser.id)
+      );
+      if (existing) return existing.id;
+      return await createConversation(peerUserId);
+    },
+    [conversations, currentUser.id, createConversation]
+  );
+
+  const sendCallMessage = useCallback(
+    async (
+      conversationId: string,
+      content: string,
+      callSummary: {
+        type: 'voice' | 'video';
+        duration: string;
+        status: 'started' | 'ended' | 'missed' | 'rejected' | 'declined';
+        callId: string;
+      }
+    ) => {
+      if (!conversationId || !callSummary?.callId) return;
+
+      const eventKey = `${callSummary.callId}_${callSummary.status}`;
+      if (loggedCallEventsRef.current.has(eventKey)) {
+        return;
+      }
+      loggedCallEventsRef.current.add(eventKey);
+
+      try {
+        const res = await chatService.sendMessage({
+          conversationId,
+          content,
+          callSummary,
+        });
+
+        if (res.success && res.data) {
+          const norm = normalizeMessage(res.data);
+          setMessages((prev) => {
+            const currentList = prev[conversationId] || [];
+            if (currentList.some((m) => m.id === norm.id)) {
+              return prev;
+            }
+            return {
+              ...prev,
+              [conversationId]: [...currentList, norm],
+            };
+          });
+
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === conversationId
+                ? { ...c, lastMessage: norm, updatedAt: new Date().toISOString() }
+                : c
+            )
+          );
+        }
+      } catch (err) {
+        console.error('[CALL] Failed to send call message:', err);
+      }
+    },
+    [normalizeMessage]
+  );
+
   // Cleanup active WebRTC Call Session
   const cleanupCallSession = useCallback(() => {
     if (callTimeoutRef.current) {
@@ -447,6 +542,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     socketService.onReceiveMessage((incomingMsg) => {
       const norm = normalizeMessage(incomingMsg);
       const isCurrentChatOpen = activeConversationIdRef.current === norm.conversationId;
+
+      if (norm.callSummary?.callId && norm.callSummary?.status) {
+        loggedCallEventsRef.current.add(`${norm.callSummary.callId}_${norm.callSummary.status}`);
+      }
 
       setMessages((prev) => {
         const currentList = prev[norm.conversationId] || [];
@@ -676,6 +775,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIncomingCallData({
         ...data,
         caller: callerObj,
+        conversationId: data.conversationId,
       });
     });
 
@@ -713,46 +813,170 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     // 4. Call Rejected
-    socketService.onCallRejected(({ callId }) => {
+    socketService.onCallRejected(async ({ callId }) => {
       console.log('[CALL] Call rejected:', callId);
+      const session = activeCallSessionRef.current;
       setActiveCallSession((prev) => (prev.callId === callId ? { ...prev, callState: 'rejected' } : prev));
-      addToast({ type: 'info', title: 'Call Rejected' });
+      addToast({ type: 'info', title: 'Call Declined' });
+
+      if (session && session.callId === callId && session.conversationId) {
+        await sendCallMessage(
+          session.conversationId,
+          `Missed ${session.type === 'video' ? 'video' : 'voice'} call (Declined)`,
+          {
+            type: session.type || 'voice',
+            duration: '00:00',
+            status: 'ended',
+            callId,
+          }
+        );
+      }
+
       setTimeout(() => {
         cleanupCallSession();
       }, 1200);
     });
 
     // 5. Call Cancelled by Caller
-    socketService.onCallCancelled(({ callId }) => {
+    socketService.onCallCancelled(async ({ callId, conversationId }) => {
       console.log('[CALL] Call cancelled by caller:', callId);
+      const incoming = incomingCallDataRef.current;
       setIncomingCallData((prev) => (prev?.callId === callId ? null : prev));
-      addToast({ type: 'info', title: 'Call Cancelled', description: 'Caller ended the call request' });
+      addToast({ type: 'info', title: 'Missed Call', description: 'Caller ended the call request' });
+
+      let convId = incoming?.conversationId || conversationId;
+      if (!convId && incoming) {
+        const existing = conversations.find(
+          (c) =>
+            c.participantIds.includes(incoming.callerId) &&
+            c.participantIds.includes(currentUser.id)
+        );
+        convId = existing?.id;
+      }
+
+      if (convId && incoming) {
+        await sendCallMessage(
+          convId,
+          `Missed ${incoming.type === 'video' ? 'video' : 'voice'} call`,
+          {
+            type: incoming.type,
+            duration: '00:00',
+            status: 'ended',
+            callId,
+          }
+        );
+      }
     });
 
-    // 6. Call Ended
-    socketService.onCallEnded(({ callId }) => {
-      console.log('[CALL] Call ended by peer:', callId);
+    // 6. Call Ended by Peer or Server Disconnect
+    socketService.onCallEnded(async ({ callId, conversationId, reason }) => {
+      console.log('[CALL] Call ended by peer/server:', callId, reason);
+      const session = activeCallSessionRef.current;
       setActiveCallSession((prev) => (prev.callId === callId ? { ...prev, callState: 'ended' } : prev));
-      addToast({ type: 'info', title: 'Call Ended' });
+      addToast({ type: 'info', title: 'Call Ended', description: reason || 'Call has ended' });
+
+      if (session && session.callId === callId && session.peerUser) {
+        const mins = Math.floor(session.seconds / 60);
+        const secs = session.seconds % 60;
+        const durationStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+        let convId = session.conversationId || conversationId;
+        if (!convId) {
+          const existing = conversations.find(
+            (c) =>
+              c.participantIds.includes(session.peerUser!.id) &&
+              c.participantIds.includes(currentUser.id)
+          );
+          convId = existing?.id;
+        }
+
+        if (convId) {
+          const content = session.seconds > 0
+            ? `${session.type === 'video' ? 'Video' : 'Voice'} call ended (${durationStr})`
+            : `Missed ${session.type === 'video' ? 'video' : 'voice'} call`;
+
+          await sendCallMessage(
+            convId,
+            content,
+            {
+              type: session.type || 'voice',
+              duration: durationStr,
+              status: 'ended',
+              callId,
+            }
+          );
+        }
+      }
+
       setTimeout(() => {
         cleanupCallSession();
       }, 1000);
     });
 
     // 7. Call Busy
-    socketService.onCallBusy(({ callId }) => {
+    socketService.onCallBusy(async ({ callId, conversationId }) => {
       console.log('[CALL] User is busy:', callId);
+      const session = activeCallSessionRef.current;
       setActiveCallSession((prev) => (prev.callId === callId ? { ...prev, callState: 'busy' } : prev));
       addToast({ type: 'warning', title: 'User is Busy', description: 'The user is currently in another call' });
+
+      let convId = session?.conversationId || conversationId;
+      if (!convId && session?.peerUser) {
+        const existing = conversations.find(
+          (c) =>
+            c.participantIds.includes(session.peerUser!.id) &&
+            c.participantIds.includes(currentUser.id)
+        );
+        convId = existing?.id;
+      }
+
+      if (convId && session) {
+        await sendCallMessage(
+          convId,
+          `Missed ${session.type === 'video' ? 'video' : 'voice'} call (User busy)`,
+          {
+            type: session.type || 'voice',
+            duration: '00:00',
+            status: 'ended',
+            callId,
+          }
+        );
+      }
+
       setTimeout(() => {
         cleanupCallSession();
       }, 1500);
     });
 
     // 8. User Unavailable
-    socketService.onCallUnavailable(({ callId, reason }) => {
+    socketService.onCallUnavailable(async ({ callId, conversationId, reason }) => {
       console.log('[CALL] User unavailable:', callId);
+      const session = activeCallSessionRef.current;
       addToast({ type: 'warning', title: 'Unavailable', description: reason || 'User is currently offline' });
+
+      let convId = session?.conversationId || conversationId;
+      if (!convId && session?.peerUser) {
+        const existing = conversations.find(
+          (c) =>
+            c.participantIds.includes(session.peerUser!.id) &&
+            c.participantIds.includes(currentUser.id)
+        );
+        convId = existing?.id;
+      }
+
+      if (convId && session) {
+        await sendCallMessage(
+          convId,
+          `Missed ${session.type === 'video' ? 'video' : 'voice'} call (User offline)`,
+          {
+            type: session.type || 'voice',
+            duration: '00:00',
+            status: 'ended',
+            callId,
+          }
+        );
+      }
+
       cleanupCallSession();
     });
 
@@ -857,8 +1081,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return;
       }
 
+      let targetConvId = conversationId;
+      if (!targetConvId) {
+        targetConvId = (await ensureConversation(peerUser.id)) || undefined;
+      }
+
       const callId = `call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      console.log(`[CALL] Starting voice call to ${peerUser.name} (${peerUser.id})`);
+      console.log(`[CALL] Starting voice call to ${peerUser.name} (${peerUser.id}), convId: ${targetConvId}`);
 
       try {
         const webrtc = new WebRTCService();
@@ -878,12 +1107,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const offer = await webrtc.createOffer();
 
+        // 1. Send Message 1: Voice Call Started to conversation inbox
+        if (targetConvId) {
+          sendCallMessage(targetConvId, 'Voice call started', {
+            type: 'voice',
+            duration: '00:00',
+            status: 'started',
+            callId,
+          });
+        }
+
         socketService.initiateCall({
           callId,
           receiverId: peerUser.id,
           type: 'voice',
           offer,
           caller: currentUser,
+          conversationId: targetConvId,
         });
 
         setActiveCallSession({
@@ -897,13 +1137,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           isCameraOn: false,
           isSpeakerOn: true,
           seconds: 0,
-          conversationId: conversationId || null,
+          conversationId: targetConvId || null,
         });
 
         // 45s Call Timeout
         callTimeoutRef.current = setTimeout(() => {
           console.log('[CALL] Voice call timed out');
-          socketService.cancelCall({ callId, to: peerUser.id });
+          socketService.cancelCall({ callId, to: peerUser.id, conversationId: targetConvId });
           chatService.logCall({
             receiverId: peerUser.id,
             type: 'voice',
@@ -911,6 +1151,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             duration: '00:00',
           });
           reloadCallLogs();
+          if (targetConvId) {
+            sendCallMessage(targetConvId, 'Missed voice call', {
+              type: 'voice',
+              duration: '00:00',
+              status: 'ended',
+              callId,
+            });
+          }
           addToast({ type: 'info', title: 'No Answer', description: `${peerUser.name} did not answer.` });
           cleanupCallSession();
         }, 45000);
@@ -920,7 +1168,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cleanupCallSession();
       }
     },
-    [currentUser, activeCallSession.callId, addToast, reloadCallLogs, cleanupCallSession]
+    [currentUser, activeCallSession.callId, addToast, reloadCallLogs, cleanupCallSession, ensureConversation, sendCallMessage]
   );
 
   // Initiate Video Call
@@ -932,8 +1180,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return;
       }
 
+      let targetConvId = conversationId;
+      if (!targetConvId) {
+        targetConvId = (await ensureConversation(peerUser.id)) || undefined;
+      }
+
       const callId = `call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      console.log(`[CALL] Starting video call to ${peerUser.name} (${peerUser.id})`);
+      console.log(`[CALL] Starting video call to ${peerUser.name} (${peerUser.id}), convId: ${targetConvId}`);
 
       try {
         const webrtc = new WebRTCService();
@@ -953,12 +1206,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const offer = await webrtc.createOffer();
 
+        // 1. Send Message 1: Video Call Started to conversation inbox
+        if (targetConvId) {
+          sendCallMessage(targetConvId, 'Video call started', {
+            type: 'video',
+            duration: '00:00',
+            status: 'started',
+            callId,
+          });
+        }
+
         socketService.initiateCall({
           callId,
           receiverId: peerUser.id,
           type: 'video',
           offer,
           caller: currentUser,
+          conversationId: targetConvId,
         });
 
         setActiveCallSession({
@@ -974,13 +1238,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           facingMode: 'user',
           isMinimized: false,
           seconds: 0,
-          conversationId: conversationId || null,
+          conversationId: targetConvId || null,
         });
 
         // 45s Call Timeout
         callTimeoutRef.current = setTimeout(() => {
           console.log('[CALL] Video call timed out');
-          socketService.cancelCall({ callId, to: peerUser.id });
+          socketService.cancelCall({ callId, to: peerUser.id, conversationId: targetConvId });
           chatService.logCall({
             receiverId: peerUser.id,
             type: 'video',
@@ -988,6 +1252,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             duration: '00:00',
           });
           reloadCallLogs();
+          if (targetConvId) {
+            sendCallMessage(targetConvId, 'Missed video call', {
+              type: 'video',
+              duration: '00:00',
+              status: 'ended',
+              callId,
+            });
+          }
           addToast({ type: 'info', title: 'No Answer', description: `${peerUser.name} did not answer.` });
           cleanupCallSession();
         }, 45000);
@@ -997,7 +1269,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cleanupCallSession();
       }
     },
-    [currentUser, activeCallSession.callId, addToast, reloadCallLogs, cleanupCallSession]
+    [currentUser, activeCallSession.callId, addToast, reloadCallLogs, cleanupCallSession, ensureConversation, sendCallMessage]
   );
 
   // Accept Incoming Call
@@ -1009,6 +1281,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const callerUser: User = data.caller;
     console.log(`[CALL] Accepting incoming ${data.type} call from ${callerUser.name}`);
+
+    let convId = data.conversationId;
+    if (!convId) {
+      convId = (await ensureConversation(callerUser.id)) || undefined;
+    }
 
     try {
       const webrtc = new WebRTCService();
@@ -1043,6 +1320,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         to: data.callerId,
         callerId: data.callerId,
         answer,
+        conversationId: convId,
       });
 
       setActiveCallSession({
@@ -1058,6 +1336,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         facingMode: 'user',
         isMinimized: false,
         seconds: 0,
+        conversationId: convId || null,
       });
 
       addToast({ type: 'success', title: 'Call Connected' });
@@ -1066,7 +1345,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast({ type: 'error', title: 'Failed to Accept Call', description: err.message });
       cleanupCallSession();
     }
-  }, [incomingCallData, addToast, cleanupCallSession]);
+  }, [incomingCallData, addToast, cleanupCallSession, ensureConversation]);
 
   // Reject Incoming Call
   const rejectIncomingCall = useCallback(async () => {
@@ -1075,7 +1354,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIncomingCallData(null);
 
     console.log(`[CALL] Rejecting call ${data.callId}`);
-    socketService.rejectCall({ callId: data.callId, to: data.callerId });
+    socketService.rejectCall({ callId: data.callId, to: data.callerId, conversationId: data.conversationId });
 
     await chatService.logCall({
       receiverId: currentUser.id,
@@ -1084,19 +1363,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       duration: '00:00',
     });
     reloadCallLogs();
-  }, [incomingCallData, currentUser.id, reloadCallLogs]);
+
+    let convId = data.conversationId;
+    if (!convId && data.caller?.id) {
+      convId = (await ensureConversation(data.caller.id)) || undefined;
+    }
+
+    if (convId && data.callId) {
+      await sendCallMessage(
+        convId,
+        `Missed ${data.type === 'video' ? 'video' : 'voice'} call (Declined)`,
+        {
+          type: data.type,
+          duration: '00:00',
+          status: 'ended',
+          callId: data.callId,
+        }
+      );
+    }
+  }, [incomingCallData, currentUser.id, reloadCallLogs, ensureConversation, sendCallMessage]);
 
   // End Current Call Session
   const endCallSession = useCallback(async () => {
-    if (!activeCallSession.callId || !activeCallSession.peerUser) {
+    const session = activeCallSessionRef.current.callId ? activeCallSessionRef.current : activeCallSession;
+    if (!session.callId || !session.peerUser) {
       cleanupCallSession();
       return;
     }
 
-    const { callId, peerUser, type, seconds, conversationId } = activeCallSession;
+    const { callId, peerUser, type, seconds } = session;
     console.log(`[CALL] Ending call ${callId}`);
 
-    socketService.endCall({ callId: callId!, to: peerUser.id });
+    let convId = session.conversationId;
+    if (!convId && peerUser?.id) {
+      convId = (await ensureConversation(peerUser.id)) || null;
+    }
+
+    socketService.endCall({ callId: callId!, to: peerUser.id, conversationId: convId || undefined });
 
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -1110,16 +1413,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     reloadCallLogs();
 
-    if (conversationId) {
-      await chatService.sendMessage({
-        conversationId,
-        content: `${type === 'video' ? 'Video' : 'Voice'} call ended (${durationStr})`,
-        callSummary: { type: type || 'voice', duration: durationStr },
-      });
+    if (convId && callId) {
+      const isCallAnswered = session.callState === 'connected' || seconds > 0;
+      const callTypeLabel = type === 'video' ? 'Video' : 'Voice';
+      const content = isCallAnswered
+        ? `${callTypeLabel} call ended (${durationStr})`
+        : `Missed ${type === 'video' ? 'video' : 'voice'} call`;
+
+      await sendCallMessage(
+        convId,
+        content,
+        {
+          type: type || 'voice',
+          duration: durationStr,
+          status: 'ended',
+          callId,
+        }
+      );
     }
 
     cleanupCallSession();
-  }, [activeCallSession, reloadCallLogs, cleanupCallSession]);
+  }, [activeCallSession, reloadCallLogs, cleanupCallSession, ensureConversation, sendCallMessage]);
 
   // Toggle Mute
   const toggleMuteCall = useCallback(() => {
@@ -1309,23 +1623,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const markAllAsRead = useCallback(() => {
     setConversations((prev) => prev.map((c) => ({ ...c, unreadCount: 0 })));
   }, []);
-
-  const createConversation = useCallback(
-    async (targetUserId: string): Promise<string> => {
-      const res = await chatService.createConversation(targetUserId);
-      if (res.success && res.data) {
-        const norm = normalizeConversation(res.data);
-        setConversations((prev) => {
-          const exists = prev.some((c) => c.id === norm.id);
-          return exists ? prev : [norm, ...prev];
-        });
-        setActiveConversationId(norm.id);
-        return norm.id;
-      }
-      return '';
-    },
-    [normalizeConversation]
-  );
 
   const sendMessage = useCallback(
     async (

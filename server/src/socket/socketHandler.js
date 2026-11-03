@@ -309,14 +309,14 @@ export const setupSocketIO = (io) => {
     // ==========================================
 
     // 1. Caller initiates a call
-    socket.on('call:initiate', ({ callId, receiverId, type, offer, caller }) => {
+    socket.on('call:initiate', ({ callId, receiverId, type, offer, caller, conversationId }) => {
       console.log(`[CALL] ${userId} initiating ${type} call (${callId}) to ${receiverId}`);
 
       // Check if receiver is online
       const receiverSet = userSockets.get(receiverId);
       if (!receiverSet || receiverSet.size === 0) {
         console.log(`[CALL] Receiver ${receiverId} is offline`);
-        socket.emit('call:unavailable', { callId, reason: 'User is offline' });
+        socket.emit('call:unavailable', { callId, conversationId, reason: 'User is offline' });
         return;
       }
 
@@ -334,17 +334,18 @@ export const setupSocketIO = (io) => {
 
       if (isReceiverBusy) {
         console.log(`[CALL] Receiver ${receiverId} is busy`);
-        socket.emit('call:busy', { callId });
+        socket.emit('call:busy', { callId, conversationId });
         return;
       }
 
-      // Save active call session
+      // Save active call session with conversationId
       activeCalls.set(callId, {
         callId,
         callerId: userId,
         receiverId,
         type,
         offer,
+        conversationId: conversationId || null,
         status: 'calling',
         startTime: Date.now(),
       });
@@ -357,10 +358,11 @@ export const setupSocketIO = (io) => {
         caller: caller || { id: userId },
         type,
         offer,
+        conversationId: conversationId || null,
       });
 
       // Notify caller that call is ringing
-      socket.emit('call:ringing', { callId });
+      socket.emit('call:ringing', { callId, conversationId });
     });
 
     // 2. Receiver accepts call
@@ -401,12 +403,13 @@ export const setupSocketIO = (io) => {
     });
 
     // 5. Caller cancels call
-    socket.on('call:cancel', ({ callId, to }) => {
+    socket.on('call:cancel', ({ callId, to, conversationId }) => {
       console.log(`[CALL] ${userId} cancelled call ${callId}`);
       const call = activeCalls.get(callId);
       const targetId = to || (call ? call.receiverId : null);
+      const convId = conversationId || call?.conversationId || null;
       if (targetId) {
-        io.to(`user:${targetId}`).emit('call:cancelled', { callId });
+        io.to(`user:${targetId}`).emit('call:cancelled', { callId, conversationId: convId });
       }
       if (call) {
         call.status = 'cancelled';
@@ -415,12 +418,13 @@ export const setupSocketIO = (io) => {
     });
 
     // 6. Either user ends active call
-    socket.on('call:end', ({ callId, to }) => {
+    socket.on('call:end', ({ callId, to, conversationId }) => {
       console.log(`[CALL] ${userId} ended call ${callId}`);
       const call = activeCalls.get(callId);
       const targetId = to || (call ? (call.callerId === userId ? call.receiverId : call.callerId) : null);
+      const convId = conversationId || call?.conversationId || null;
       if (targetId) {
-        io.to(`user:${targetId}`).emit('call:ended', { callId });
+        io.to(`user:${targetId}`).emit('call:ended', { callId, conversationId: convId });
       }
       if (call) {
         call.status = 'ended';
@@ -450,11 +454,15 @@ export const setupSocketIO = (io) => {
       }
       socketUserMap.delete(socket.id);
 
-      // Check if user was in active calls and notify peer
+      // Check if user was in active calls and notify peer with conversationId
       for (const [callId, call] of activeCalls.entries()) {
         if (call.callerId === userId || call.receiverId === userId) {
           const peerId = call.callerId === userId ? call.receiverId : call.callerId;
-          io.to(`user:${peerId}`).emit('call:ended', { callId, reason: 'Peer disconnected' });
+          io.to(`user:${peerId}`).emit('call:ended', {
+            callId,
+            reason: 'Peer disconnected',
+            conversationId: call.conversationId || null,
+          });
           activeCalls.delete(callId);
         }
       }

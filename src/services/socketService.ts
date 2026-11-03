@@ -154,23 +154,24 @@ class SocketService {
     type: 'voice' | 'video';
     offer: any;
     caller: any;
+    conversationId?: string;
   }) {
     this.socket?.emit('call:initiate', payload);
   }
 
-  acceptCall(payload: { callId: string; to?: string; callerId?: string; answer: any }) {
+  acceptCall(payload: { callId: string; to?: string; callerId?: string; answer: any; conversationId?: string }) {
     this.socket?.emit('call:accept', payload);
   }
 
-  rejectCall(payload: { callId: string; to?: string }) {
+  rejectCall(payload: { callId: string; to?: string; conversationId?: string }) {
     this.socket?.emit('call:reject', payload);
   }
 
-  cancelCall(payload: { callId: string; to?: string }) {
+  cancelCall(payload: { callId: string; to?: string; conversationId?: string }) {
     this.socket?.emit('call:cancel', payload);
   }
 
-  endCall(payload: { callId: string; to?: string }) {
+  endCall(payload: { callId: string; to?: string; conversationId?: string }) {
     this.socket?.emit('call:end', payload);
   }
 

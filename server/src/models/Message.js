@@ -60,11 +60,18 @@ const messageSchema = new mongoose.Schema(
     callSummary: {
       type: { type: String },
       duration: String,
+      status: { type: String, default: 'ended' }, // 'started' | 'ended' | 'missed' | 'rejected'
+      callId: { type: String },
     },
   },
   {
     timestamps: true,
   }
+);
+
+messageSchema.index(
+  { conversationId: 1, 'callSummary.callId': 1, 'callSummary.status': 1 },
+  { sparse: true }
 );
 
 messageSchema.methods.toJSON = function () {

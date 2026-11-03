@@ -51,6 +51,21 @@ export const sendMessage = async (req, res, next) => {
       ? 'delivered'
       : 'sent';
 
+    // Deduplicate call messages: ensure only 1 "started" and 1 "ended" message per callId
+    if (callSummary && callSummary.callId && callSummary.status) {
+      const existingCallMessage = await Message.findOne({
+        conversationId,
+        'callSummary.callId': callSummary.callId,
+        'callSummary.status': callSummary.status,
+      })
+        .populate('senderId', '-password')
+        .populate('replyTo');
+
+      if (existingCallMessage) {
+        return res.status(200).json({ success: true, data: existingCallMessage });
+      }
+    }
+
     const newMessage = await Message.create({
       conversationId,
       senderId,

@@ -10,7 +10,10 @@ import {
   Star,
   Trash2,
   PhoneCall,
+  PhoneIncoming,
+  PhoneMissed,
   Video,
+  VideoOff,
   Pencil,
   Pin,
   MoreVertical,
@@ -332,20 +335,64 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
         {/* Call Summary Card */}
         {message.callSummary && (
-          <div className="flex items-center gap-3 p-2.5 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 mb-1">
-            <div className="p-2 rounded-full bg-emerald-600 text-white">
+          <div
+            className={cn(
+              'flex items-center gap-3 p-2.5 rounded-xl border mb-1 select-none',
+              message.callSummary.status === 'started'
+                ? 'bg-blue-500/10 dark:bg-blue-500/20 border-blue-500/20 text-blue-700 dark:text-blue-300'
+                : message.callSummary.duration === '00:00' ||
+                  message.content?.toLowerCase().includes('missed') ||
+                  message.content?.toLowerCase().includes('declined')
+                ? 'bg-rose-500/10 dark:bg-rose-500/20 border-rose-500/20 text-rose-700 dark:text-rose-300'
+                : 'bg-emerald-500/10 dark:bg-emerald-500/20 border-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+            )}
+          >
+            <div
+              className={cn(
+                'p-2 rounded-full text-white flex-shrink-0',
+                message.callSummary.status === 'started'
+                  ? 'bg-blue-600'
+                  : message.callSummary.duration === '00:00' ||
+                    message.content?.toLowerCase().includes('missed') ||
+                    message.content?.toLowerCase().includes('declined')
+                  ? 'bg-rose-600'
+                  : 'bg-emerald-600'
+              )}
+            >
               {message.callSummary.type === 'video' ? (
-                <Video className="w-4 h-4" />
+                message.callSummary.duration === '00:00' ||
+                message.content?.toLowerCase().includes('missed') ||
+                message.content?.toLowerCase().includes('declined') ? (
+                  <VideoOff className="w-4 h-4" />
+                ) : (
+                  <Video className="w-4 h-4" />
+                )
+              ) : message.callSummary.status === 'started' ? (
+                <PhoneIncoming className="w-4 h-4" />
+              ) : message.callSummary.duration === '00:00' ||
+                message.content?.toLowerCase().includes('missed') ||
+                message.content?.toLowerCase().includes('declined') ? (
+                <PhoneMissed className="w-4 h-4" />
               ) : (
                 <PhoneCall className="w-4 h-4" />
               )}
             </div>
             <div>
-              <p className="text-xs font-bold capitalize text-emerald-700 dark:text-emerald-300">
-                {message.callSummary.type} Call Ended
+              <p className="text-xs font-bold capitalize">
+                {message.callSummary.status === 'started'
+                  ? `${message.callSummary.type} Call Started`
+                  : message.callSummary.duration === '00:00' ||
+                    message.content?.toLowerCase().includes('missed') ||
+                    message.content?.toLowerCase().includes('declined')
+                  ? message.content || `Missed ${message.callSummary.type} Call`
+                  : `${message.callSummary.type} Call Ended`}
               </p>
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                Duration: {message.callSummary.duration}
+              <p className="text-[11px] opacity-75">
+                {message.callSummary.status === 'started'
+                  ? `Started at ${message.timestamp}`
+                  : message.callSummary.duration && message.callSummary.duration !== '00:00'
+                  ? `Duration: ${message.callSummary.duration}`
+                  : 'No answer'}
               </p>
             </div>
           </div>
