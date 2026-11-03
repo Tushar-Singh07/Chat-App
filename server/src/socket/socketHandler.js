@@ -450,6 +450,7 @@ export const setupSocketIO = (io) => {
             isOnline: false,
             lastSeen: disconnectTime.toISOString(),
           });
+          io.emit('user_stop_typing', { userId });
         }
       }
       socketUserMap.delete(socket.id);

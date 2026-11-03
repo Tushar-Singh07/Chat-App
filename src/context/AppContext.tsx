@@ -547,6 +547,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         loggedCallEventsRef.current.add(`${norm.callSummary.callId}_${norm.callSummary.status}`);
       }
 
+      // When a new message arrives from the partner in this conversation, end typing immediately
+      setTypingUsers((prev) => {
+        if (!prev[norm.conversationId]) return prev;
+        return { ...prev, [norm.conversationId]: false };
+      });
+      const senderIdStr = String(norm.senderId);
+      if (senderIdStr) {
+        setUserPresences((prev) => {
+          const cur = prev[senderIdStr];
+          if (cur?.status === 'typing') {
+            return {
+              ...prev,
+              [senderIdStr]: {
+                ...cur,
+                status: 'online',
+              },
+            };
+          }
+          return prev;
+        });
+      }
+
       setMessages((prev) => {
         const currentList = prev[norm.conversationId] || [];
         if (currentList.some((m) => m.id === norm.id)) {
@@ -717,11 +739,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (userId && userId === authUser?.id) return;
       setTypingUsers((prev) => ({ ...prev, [conversationId]: true }));
 
+      if (userId) {
+        setUserPresences((prev) => ({
+          ...prev,
+          [userId]: {
+            ...prev[userId],
+            status: 'typing',
+          },
+        }));
+      }
+
       const existingTimer = typingTimeouts.get(conversationId);
       if (existingTimer) clearTimeout(existingTimer);
 
+      // Fallback timer: if peer unexpectedly disconnects without emitting stop_typing, reset after 3.5s
       const timer = setTimeout(() => {
         setTypingUsers((prev) => ({ ...prev, [conversationId]: false }));
+        if (userId) {
+          setUserPresences((prev) => {
+            const cur = prev[userId];
+            if (cur?.status === 'typing') {
+              return {
+                ...prev,
+                [userId]: {
+                  ...cur,
+                  status: 'online',
+                },
+              };
+            }
+            return prev;
+          });
+        }
         typingTimeouts.delete(conversationId);
       }, 3500);
       typingTimeouts.set(conversationId, timer);
@@ -729,12 +777,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     socketService.onUserStopTyping(({ conversationId, userId }) => {
       if (userId && userId === authUser?.id) return;
-      const existingTimer = typingTimeouts.get(conversationId);
-      if (existingTimer) {
-        clearTimeout(existingTimer);
-        typingTimeouts.delete(conversationId);
+      if (conversationId) {
+        const existingTimer = typingTimeouts.get(conversationId);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+          typingTimeouts.delete(conversationId);
+        }
+        setTypingUsers((prev) => ({ ...prev, [conversationId]: false }));
+      } else {
+        setTypingUsers({});
       }
-      setTypingUsers((prev) => ({ ...prev, [conversationId]: false }));
+
+      if (userId) {
+        setUserPresences((prev) => {
+          const cur = prev[userId];
+          if (cur?.status === 'typing') {
+            return {
+              ...prev,
+              [userId]: {
+                ...cur,
+                status: 'online',
+              },
+            };
+          }
+          return prev;
+        });
+      }
     });
 
     socketService.onPresenceChange(({ userId, isOnline, lastSeen }) => {

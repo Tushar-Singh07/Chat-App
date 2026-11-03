@@ -308,6 +308,7 @@ export const ChatsPage: React.FC = () => {
   const isSendingRef = useRef(false);
   const typingDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingActiveRef = useRef(false);
+  const lastTypingHeartbeatRef = useRef<number>(0);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -316,27 +317,51 @@ export const ChatsPage: React.FC = () => {
     if (!currentConvId) return;
 
     if (val.trim().length > 0) {
-      if (!isTypingActiveRef.current) {
+      const now = Date.now();
+      // Send typing signal immediately on first keystroke,
+      // and keep re-emitting every 1.5s while user continues typing
+      if (!isTypingActiveRef.current || now - lastTypingHeartbeatRef.current > 1500) {
         isTypingActiveRef.current = true;
+        lastTypingHeartbeatRef.current = now;
         sendTypingSignal(currentConvId, true);
       }
 
+      // Reset debounce: if user stops/pauses typing for 1800ms, emit stop typing
       if (typingDebounceRef.current) {
         clearTimeout(typingDebounceRef.current);
       }
 
       typingDebounceRef.current = setTimeout(() => {
-        isTypingActiveRef.current = false;
-        sendTypingSignal(currentConvId, false);
-      }, 2500);
+        if (isTypingActiveRef.current) {
+          isTypingActiveRef.current = false;
+          lastTypingHeartbeatRef.current = 0;
+          sendTypingSignal(currentConvId, false);
+        }
+      }, 1800);
     } else {
-      if (isTypingActiveRef.current) {
-        isTypingActiveRef.current = false;
-        sendTypingSignal(currentConvId, false);
-      }
+      // Input cleared -> end typing immediately
       if (typingDebounceRef.current) {
         clearTimeout(typingDebounceRef.current);
+        typingDebounceRef.current = null;
       }
+      if (isTypingActiveRef.current) {
+        isTypingActiveRef.current = false;
+        lastTypingHeartbeatRef.current = 0;
+        sendTypingSignal(currentConvId, false);
+      }
+    }
+  };
+
+  const handleInputBlur = () => {
+    // When input loses focus, end typing immediately
+    if (typingDebounceRef.current) {
+      clearTimeout(typingDebounceRef.current);
+      typingDebounceRef.current = null;
+    }
+    if (isTypingActiveRef.current && currentConvId) {
+      isTypingActiveRef.current = false;
+      lastTypingHeartbeatRef.current = 0;
+      sendTypingSignal(currentConvId, false);
     }
   };
 
@@ -345,9 +370,11 @@ export const ChatsPage: React.FC = () => {
     return () => {
       if (typingDebounceRef.current) {
         clearTimeout(typingDebounceRef.current);
+        typingDebounceRef.current = null;
       }
       if (isTypingActiveRef.current && currentConvId) {
         isTypingActiveRef.current = false;
+        lastTypingHeartbeatRef.current = 0;
         sendTypingSignal(currentConvId, false);
       }
     };
@@ -360,9 +387,11 @@ export const ChatsPage: React.FC = () => {
     // Clear typing indicator immediately when message is sent
     if (typingDebounceRef.current) {
       clearTimeout(typingDebounceRef.current);
+      typingDebounceRef.current = null;
     }
     if (isTypingActiveRef.current) {
       isTypingActiveRef.current = false;
+      lastTypingHeartbeatRef.current = 0;
       sendTypingSignal(currentConvId, false);
     }
 
@@ -907,7 +936,28 @@ export const ChatsPage: React.FC = () => {
                   (emoji) => (
                     <button
                       key={emoji}
-                      onClick={() => setMessageInput((prev) => prev + emoji)}
+                      onClick={() => {
+                        setMessageInput((prev) => {
+                          const next = prev + emoji;
+                          if (currentConvId) {
+                            const now = Date.now();
+                            if (!isTypingActiveRef.current || now - lastTypingHeartbeatRef.current > 1500) {
+                              isTypingActiveRef.current = true;
+                              lastTypingHeartbeatRef.current = now;
+                              sendTypingSignal(currentConvId, true);
+                            }
+                            if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
+                            typingDebounceRef.current = setTimeout(() => {
+                              if (isTypingActiveRef.current) {
+                                isTypingActiveRef.current = false;
+                                lastTypingHeartbeatRef.current = 0;
+                                sendTypingSignal(currentConvId, false);
+                              }
+                            }, 1800);
+                          }
+                          return next;
+                        });
+                      }}
                       className="text-lg p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#2a3942] transition-transform hover:scale-125"
                     >
                       {emoji}
@@ -963,6 +1013,7 @@ export const ChatsPage: React.FC = () => {
                   type="text"
                   value={messageInput}
                   onChange={handleInputChange}
+                  onBlur={handleInputBlur}
                   placeholder="Type a message"
                   className="flex-1 px-4 py-2.5 text-sm bg-white dark:bg-[#2a3942] text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/50 border border-transparent transition-all"
                 />
