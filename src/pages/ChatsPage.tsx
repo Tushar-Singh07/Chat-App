@@ -410,18 +410,94 @@ export const ChatsPage: React.FC = () => {
     }
   };
 
-  // Handle File Input Change (Local Object URL generation)
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Helper to read file as permanent Base64 Data URL so it is fully visible and downloadable across all devices
+  const readFileAsDataURL = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Helper to compress images for fast transmission, zero broken links, and crisp quality
+  const compressImageIfNeeded = async (file: File): Promise<string> => {
+    if (!file.type.startsWith('image/') || file.type.includes('svg') || file.type.includes('gif')) {
+      return readFileAsDataURL(file);
+    }
+
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX_WIDTH = 1280;
+          const MAX_HEIGHT = 1280;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height = Math.round((height * MAX_WIDTH) / width);
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width = Math.round((width * MAX_HEIGHT) / height);
+              height = MAX_HEIGHT;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(e.target?.result as string);
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+          resolve(compressedDataUrl);
+        };
+        img.onerror = () => {
+          resolve(e.target?.result as string);
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => {
+        resolve('');
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  // Handle File Input Change (Permanent Base64 Data URL generation)
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const fileUrl = URL.createObjectURL(file);
     const isVideo = file.type.startsWith('video');
+    const isImage = file.type.startsWith('image');
 
     setSelectedFile(file);
-    setPreviewMediaUrl(fileUrl);
     setPreviewMediaType(isVideo ? 'video' : 'image');
-    setIsMediaPreviewOpen(true);
+
+    try {
+      const fileDataUrl = isImage ? await compressImageIfNeeded(file) : await readFileAsDataURL(file);
+      setPreviewMediaUrl(fileDataUrl);
+      setIsMediaPreviewOpen(true);
+    } catch (err: any) {
+      console.error('Failed to read file:', err);
+      addToast({ type: 'error', title: 'File Error', description: err?.message || 'Could not process media.' });
+    }
 
     e.target.value = '';
   };
@@ -430,12 +506,13 @@ export const ChatsPage: React.FC = () => {
   const handleSendMediaPreview = (caption: string) => {
     if (!currentConvId || !previewMediaUrl) return;
 
+    const sizeStr = selectedFile ? formatFileSize(selectedFile.size) : '450 KB';
     const attachment: MediaAttachment = {
-      id: `att-${Date.now()}`,
+      id: `att-${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       type: previewMediaType,
       url: previewMediaUrl,
-      fileName: selectedFile ? selectedFile.name : `${previewMediaType}.jpg`,
-      fileSize: selectedFile ? `${(selectedFile.size / (1024 * 1024)).toFixed(1)} MB` : '1.5 MB',
+      fileName: selectedFile ? selectedFile.name : `${previewMediaType}_${Date.now()}.jpg`,
+      fileSize: sizeStr,
     };
 
     sendMessage(currentConvId, caption, replyTarget ? replyTarget.id : undefined, [attachment]);
@@ -528,20 +605,25 @@ export const ChatsPage: React.FC = () => {
       <input
         type="file"
         ref={docFileInputRef}
-        onChange={(e) => {
+        onChange={async (e) => {
           const file = e.target.files?.[0];
           if (file && currentConvId) {
-            const url = URL.createObjectURL(file);
-            const docAtt: MediaAttachment = {
-              id: `att-doc-${Date.now()}`,
-              type: 'document',
-              url,
-              fileName: file.name,
-              fileSize: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-            };
-            sendMessage(currentConvId, `Shared document ${file.name}`, undefined, [docAtt]);
-            addToast({ type: 'success', title: 'Document sent' });
+            try {
+              const url = await readFileAsDataURL(file);
+              const docAtt: MediaAttachment = {
+                id: `att-doc-${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                type: 'document',
+                url,
+                fileName: file.name,
+                fileSize: formatFileSize(file.size),
+              };
+              sendMessage(currentConvId, `Shared document ${file.name}`, undefined, [docAtt]);
+              addToast({ type: 'success', title: 'Document sent' });
+            } catch (err) {
+              console.error('Document read error:', err);
+            }
           }
+          e.target.value = '';
         }}
         accept=".pdf,.doc,.docx,.txt,.zip"
         className="hidden"

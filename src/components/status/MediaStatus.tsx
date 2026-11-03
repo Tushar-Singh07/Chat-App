@@ -36,11 +36,16 @@ export const MediaStatus: React.FC<MediaStatusProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const fileUrl = URL.createObjectURL(file);
     const isVideo = file.type.startsWith('video');
-
-    setMediaUrl(fileUrl);
     setMediaType(isVideo ? 'video' : 'image');
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      if (ev.target?.result) {
+        setMediaUrl(ev.target.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handlePost = () => {

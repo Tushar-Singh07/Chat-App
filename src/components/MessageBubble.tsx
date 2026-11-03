@@ -420,7 +420,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             {message.attachments.map((att) => (
               <div key={att.id} onClick={(e) => e.stopPropagation()}>
                 {att.type === 'image' && (
-                  <ImageMessage attachment={att} onClick={() => onImageClick(att.url)} />
+                  <ImageMessage attachment={att} isMe={isMe} onClick={() => onImageClick(att.url)} />
                 )}
                 {att.type === 'video' && <VideoMessage attachment={att} isMe={isMe} />}
                 {att.type === 'audio' && <AudioPlayer url={att.url} duration={att.duration} isMe={isMe} />}
